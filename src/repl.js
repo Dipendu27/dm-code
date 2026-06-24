@@ -396,6 +396,8 @@ export class REPL {
   }
 
   _exit() {
+    if (this._exiting) return; // prevent double-fire from close event
+    this._exiting = true;
     console.log();
     // Fix 5: Mark session as completed on clean exit
     if (this.agent) {
