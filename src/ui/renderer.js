@@ -91,13 +91,79 @@ export function printAssistantPrefix() {
   process.stdout.write(prefix + ' ');
 }
 
-// ─── Streaming text output ───────────────────────────────────────────────────
+// ─── Streaming text output (Fix 3.3 & 3.12) ───────────────────────────────────
+class StreamingMarkdown {
+  constructor() {
+    this.buffer = '';
+    this.inCodeBlock = false;
+    this.inInlineCode = false;
+    this.inBold = false;
+  }
+
+  push(text) {
+    this.buffer += text;
+    let output = '';
+
+    // Process complete tokens while they exist in the buffer
+    while (this.buffer.length > 0) {
+      if (this.buffer.startsWith('```')) {
+        this.inCodeBlock = !this.inCodeBlock;
+        this.buffer = this.buffer.slice(3);
+        // Code block formatting
+        output += this.inCodeBlock ? chalk.bgHex('#1A1A1A').hex('#A8C7FA')('\n') : chalk.reset('\n');
+      } else if (this.buffer.startsWith('**')) {
+        this.inBold = !this.inBold;
+        this.buffer = this.buffer.slice(2);
+        output += this.inBold ? '\x1b[1m' : '\x1b[22m';
+      } else if (this.buffer.startsWith('`') && !this.inCodeBlock) {
+        this.inInlineCode = !this.inInlineCode;
+        this.buffer = this.buffer.slice(1);
+        output += this.inInlineCode ? chalk.bgHex('#222').cyan('') : chalk.reset(c.assistant(''));
+      } else {
+        // Find next potential token
+        const nextToken = this.buffer.match(/```|\*\*|`/);
+        const idx = nextToken ? nextToken.index : this.buffer.length;
+
+        // If a token is partially formed at the end, wait for more chunks
+        if (!nextToken && (this.buffer.endsWith('`') || this.buffer.endsWith('*'))) {
+          break; // wait for next chunk
+        }
+
+        const chunk = this.buffer.slice(0, idx || 1);
+        this.buffer = this.buffer.slice(chunk.length);
+
+        // Apply formatting
+        if (this.inCodeBlock) {
+          output += chalk.bgHex('#1A1A1A').hex('#A8C7FA')(chunk);
+        } else if (this.inInlineCode) {
+          output += chalk.bgHex('#222').cyan(chunk);
+        } else if (this.inBold) {
+          output += chunk; // ANSI bold is active
+        } else {
+          output += c.assistant(chunk);
+        }
+      }
+    }
+    return output;
+  }
+}
+
+let activeStream = null;
+
 export function printStreamChunk(text) {
-  process.stdout.write(c.assistant(text));
+  if (!activeStream) activeStream = new StreamingMarkdown();
+  const formatted = activeStream.push(text);
+  if (formatted) {
+    process.stdout.write(formatted);
+  }
 }
 
 // ─── End streaming ───────────────────────────────────────────────────────────
 export function printStreamEnd() {
+  if (activeStream && activeStream.buffer) {
+    process.stdout.write(c.assistant(activeStream.buffer));
+  }
+  activeStream = null;
   console.log();
   console.log();
 }

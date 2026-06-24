@@ -410,9 +410,9 @@ export class AgentLoop {
 
         // Route to the right streaming parser
         switch (adapter) {
-          case 'anthropic': return this._consumeAnthropicStream(stream);
-          case 'openai':    return this._consumeOpenAIStream(stream);
-          case 'google':    return this._consumeGeminiStream(fullResult || stream);
+          case 'anthropic': return await this._consumeAnthropicStream(stream);
+          case 'openai':    return await this._consumeOpenAIStream(stream);
+          case 'google':    return await this._consumeGeminiStream(fullResult || stream);
           default:          throw new Error(`Unknown adapter: ${adapter}`);
         }
       } catch (err) {
@@ -422,11 +422,16 @@ export class AgentLoop {
           const baseDelay = Math.pow(2, attempt) * 1000;
           const jitter = Math.random() * 500;
           const delay = Math.min(baseDelay + jitter, 30_000);
-          printWarning(
-            `Waiting for API response · will retry in ${Math.round(delay / 1000)}s ` +
-            `(attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${err.message}`
+          
+          // Fix 6.4/6.5: Connection drops mid-thinking and retry indicator clears
+          process.stdout.write(
+            `\n\x1b[33m  ⚠ Connection dropped — retrying in ${Math.round(delay / 1000)}s...\x1b[0m\n`
           );
+          
           await new Promise(r => setTimeout(r, delay));
+          
+          // Clear the retry message
+          process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
           continue;
         }
 

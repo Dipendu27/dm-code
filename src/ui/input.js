@@ -2,6 +2,7 @@
 // Readline-based REPL with history, shortcuts, multi-line support
 
 import readline from 'readline';
+import { StringDecoder } from 'string_decoder';
 import chalk from 'chalk';
 import { THEME } from '../config/constants.js';
 
@@ -23,6 +24,33 @@ export class InputHandler {
     this._onLine = onLine;
     this._onClose = onClose;
 
+    // Fix 4.6: CJK mojibake (use StringDecoder to prevent splitting multi-byte chars)
+    const decoder = new StringDecoder('utf8');
+    
+    // Fix 4.2: Bracketed paste duplication in VS Code / Cursor
+    let inBracketedPaste = false;
+    const rawStdin = process.stdin;
+    
+    // Enable bracketed paste in the terminal
+    process.stdout.write('\x1b[?2004h');
+
+    // Intercept stdin to filter out bracketed paste markers which cause duplication/bugs
+    const handleData = (chunk) => {
+      let text = decoder.write(chunk);
+      
+      if (text.includes('\x1b[200~')) {
+        inBracketedPaste = true;
+        text = text.replace(/\x1b\[200~/g, '');
+      }
+      
+      if (text.includes('\x1b[201~')) {
+        inBracketedPaste = false;
+        text = text.replace(/\x1b\[201~/g, '');
+      }
+    };
+    
+    rawStdin.on('data', handleData);
+
     this.rl = readline.createInterface({
       input:  process.stdin,
       output: process.stdout,
@@ -30,6 +58,7 @@ export class InputHandler {
       historySize: HISTORY_MAX,
       prompt: PROMPT,
       removeHistoryDuplicates: true,
+      escapeCodeTimeout: 50, // Helps with fast bracketed paste sequences
     });
 
     // Ctrl+C — cancel current op or exit
@@ -47,6 +76,8 @@ export class InputHandler {
     });
 
     this.rl.on('close', () => {
+      // Disable bracketed paste
+      process.stdout.write('\x1b[?2004l');
       if (this._onClose) this._onClose();
     });
 
@@ -83,6 +114,7 @@ export class InputHandler {
   // ── Close cleanly ────────────────────────────────────────────────────────────
   close() {
     if (this.rl) {
+      process.stdout.write('\x1b[?2004l'); // Disable bracketed paste
       this.rl.close();
       this.rl = null;
     }

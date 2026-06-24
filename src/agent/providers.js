@@ -46,12 +46,37 @@ export class ProviderClient {
     }
     const client = _clientCache[cacheKey];
 
+    // Fix 6.1: Add prompt caching
+    const system = [
+      {
+        type: 'text',
+        text: ANNIHILATOR_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' }
+      }
+    ];
+
+    const cachedMessages = messages.map((m, idx) => {
+      // Add cache_control to the last 2 user messages
+      if (m.role === 'user' && idx >= messages.length - 2) {
+        if (typeof m.content === 'string') {
+          return { ...m, content: [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }] };
+        } else if (Array.isArray(m.content)) {
+          const newContent = [...m.content];
+          if (newContent.length > 0) {
+            newContent[newContent.length - 1] = { ...newContent[newContent.length - 1], cache_control: { type: 'ephemeral' } };
+          }
+          return { ...m, content: newContent };
+        }
+      }
+      return m;
+    });
+
     const stream = client.messages.stream({
       model:      this.model.id,
       max_tokens: MAX_TOKENS,
-      system:     ANNIHILATOR_SYSTEM_PROMPT,
+      system,
       tools,
-      messages,
+      messages: cachedMessages,
     });
 
     return { stream, adapter: 'anthropic' };
