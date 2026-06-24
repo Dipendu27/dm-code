@@ -2,7 +2,6 @@
 
 > Agentic AI coding assistant for your terminal — powered by **Annihilator**
 
-[![npm version](https://img.shields.io/npm/v/dm-code.svg)](https://www.npmjs.com/package/dm-code)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue.svg)](#)
@@ -25,7 +24,7 @@ DM Code is a **free, open-source Claude Code alternative** that runs from your t
 ### npm (Recommended — works everywhere)
 
 ```bash
-npm install -g dm-code
+npm install -g git+https://github.com/Dipendu27/dm-code.git
 ```
 
 That's it. Now type `dmcode` from **any directory** on **any device**:
@@ -82,7 +81,7 @@ dmcode setup        # guided model + API key configuration
 ### Option 1: npm global install (recommended)
 
 ```bash
-npm install -g dm-code
+npm install -g git+https://github.com/Dipendu27/dm-code.git
 dmcode setup
 ```
 
@@ -321,7 +320,7 @@ Environment variables always take priority over saved config.
 
 ```bash
 # Re-link globally:
-npm install -g dm-code
+npm install -g git+https://github.com/Dipendu27/dm-code.git
 
 # Or from the project directory:
 cd dm-code && npm link
@@ -370,7 +369,7 @@ npm login
 npm publish
 ```
 
-Users can then install globally with `npm install -g dm-code`.
+Users can then install globally with `npm install -g git+https://github.com/Dipendu27/dm-code.git` (or `npm install -g dm-code` once published).
 
 ---
 
