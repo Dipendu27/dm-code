@@ -377,6 +377,7 @@ class ThinkingSpinner {
     this._msgIndex = 0;
     this._msgTick = 0;
     this._startTime = 0;
+    this._overrideMsg = null;
   }
 
   start() {
@@ -385,6 +386,7 @@ class ThinkingSpinner {
     this._msgIndex = Math.floor(Math.random() * THINKING_MESSAGES.length);
     this._msgTick = 0;
     this._startTime = Date.now();
+    this._overrideMsg = null;
 
     this._render();
     this._interval = setInterval(() => {
@@ -400,7 +402,7 @@ class ThinkingSpinner {
 
   _render() {
     const spinner = chalk.hex(THEME.primary)(SPINNER_FRAMES[this._frame]);
-    const msg = THINKING_MESSAGES[this._msgIndex];
+    const msg = this._overrideMsg || THINKING_MESSAGES[this._msgIndex];
     const elapsed = ((Date.now() - this._startTime) / 1000).toFixed(0);
     const timer = c.dim(` ${elapsed}s`);
     const line = `  ${spinner} ${c.muted(msg)}${timer}`;
@@ -412,8 +414,17 @@ class ThinkingSpinner {
       clearInterval(this._interval);
       this._interval = null;
     }
+    this._overrideMsg = null;
     // Clear the spinner line
     process.stdout.write('\r\x1b[2K');
+  }
+
+  setOverrideMessage(msg) {
+    this._overrideMsg = msg;
+  }
+
+  clearOverrideMessage() {
+    this._overrideMsg = null;
   }
 
   get running() {
@@ -430,6 +441,14 @@ export function startThinking() {
 
 export function stopThinking() {
   if (_spinner) _spinner.stop();
+}
+
+export function setThinkingMessage(msg) {
+  if (_spinner) _spinner.setOverrideMessage(msg);
+}
+
+export function clearThinkingMessage() {
+  if (_spinner) _spinner.clearOverrideMessage();
 }
 
 // Legacy aliases for backward compat

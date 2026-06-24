@@ -28,6 +28,7 @@ import {
   printInfo,
   startThinking,
   stopThinking,
+  setThinkingMessage,
 } from '../ui/renderer.js';
 import {
   ProviderClient,
@@ -505,19 +506,12 @@ export class AgentLoop {
           const jitter = Math.random() * 500;
           const delay = Math.min(baseDelay + jitter, 30_000);
           
-          // Stop spinner so retry message shows cleanly
-          stopThinking();
+          // Show retry status in the spinner (updates in-place, no terminal clutter)
+          const retryMsg = `Connection dropped — retrying (${attempt + 1}/${MAX_RETRIES})…`;
+          setThinkingMessage(retryMsg);
+          startThinking(); // safe to call if already running (has guard)
 
-          // Fix 6.4/6.5: Connection drops mid-thinking and retry indicator clears
-          process.stdout.write(
-            `\n\x1b[33m  ⚠ Connection dropped — retrying in ${Math.round(delay / 1000)}s...\x1b[0m\n`
-          );
-          
           await new Promise(r => setTimeout(r, delay));
-          
-          // Clear the retry message and restart spinner
-          process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
-          startThinking();
           continue;
         }
 
