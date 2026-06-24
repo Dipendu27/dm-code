@@ -487,6 +487,7 @@ export class AgentLoop {
         const { stream, adapter, fullResult } = await this.client.streamMessage({
           messages,
           tools: allTools,
+          signal: this.abortController?.signal,
         });
 
         // Route to the right streaming parser

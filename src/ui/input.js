@@ -97,9 +97,32 @@ export class InputHandler {
   }
 
   resume() {
+    this.clearInterruptOverride();
     if (this.rl) {
       this.rl.resume();
       this.rl.prompt();
+    }
+  }
+
+  // ── Raw Ctrl+C listener for when readline is paused ─────────────────────────
+  // When readline is paused, it stops reading stdin, so SIGINT events never fire.
+  // This registers a raw stdin data listener that catches \x03 (Ctrl+C) directly.
+  registerInterruptOverride(callback) {
+    this.clearInterruptOverride();
+    this._rawInterruptHandler = (data) => {
+      // Check for Ctrl+C byte (0x03)
+      if (data.includes('\x03')) {
+        callback();
+      }
+    };
+    process.stdin.resume(); // ensure stdin is readable even when rl is paused
+    process.stdin.on('data', this._rawInterruptHandler);
+  }
+
+  clearInterruptOverride() {
+    if (this._rawInterruptHandler) {
+      process.stdin.removeListener('data', this._rawInterruptHandler);
+      this._rawInterruptHandler = null;
     }
   }
 

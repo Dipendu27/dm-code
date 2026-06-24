@@ -10,7 +10,7 @@ import { showModelPicker, inlineModelSwitcher, printCurrentModel, providerBadge 
 import {
   printWelcome, printSessionLine, printUserPrompt, printHelp,
   printConfig, printConfirmBox, printInfo, printSuccess, printError, printWarning,
-  printCostSummary, printSessionList,
+  printCostSummary, printSessionList, stopThinking,
 } from './ui/renderer.js';
 import {
   getApiKey, setApiKey, getAllApiKeys, getAllConfig, getConfig, setConfig,
@@ -111,6 +111,10 @@ export class REPL {
 
     this.input.pause();
     this.processing = true;
+
+    // Register raw Ctrl+C listener so user can interrupt even while readline is paused
+    this.input.registerInterruptOverride(() => this._handleInterrupt());
+
     try {
       printUserPrompt(line);
       await this.agent.run(line);
@@ -119,7 +123,7 @@ export class REPL {
     } finally {
       this.processing = false;
       await this._saveMemory(); // persist memory to disk after each turn
-      this.input.resume();
+      this.input.resume(); // also clears the interrupt override
     }
   }
 
@@ -380,8 +384,9 @@ export class REPL {
     if (this.processing && this.agent) {
       this.agent.abort();
       this.processing = false;
+      stopThinking();
       console.log();
-      printWarning('Interrupted.');
+      printWarning('Interrupted — press Enter to continue.');
       this.input.resume();
     } else if (this._pendingExit) {
       // Second Ctrl+C — exit immediately
