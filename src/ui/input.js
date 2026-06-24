@@ -65,15 +65,21 @@ export class InputHandler {
     });
 
     // Ctrl+C — fires even while processing because we no longer pause readline
-    this.rl.on('SIGINT', () => {
+    // Both handlers exist for cross-platform reliability, but we debounce to
+    // prevent double-firing when both trigger from the same Ctrl+C press.
+    let lastInterrupt = 0;
+    const handleInterrupt = () => {
+      const now = Date.now();
+      if (now - lastInterrupt < 200) return; // debounce duplicate SIGINT
+      lastInterrupt = now;
       if (this._onInterrupt) this._onInterrupt();
-    });
+    };
+
+    this.rl.on('SIGINT', handleInterrupt);
 
     // Belt-and-suspenders: process-level SIGINT for Windows terminals
     // where readline's SIGINT may not fire in some edge cases
-    process.on('SIGINT', () => {
-      if (this._onInterrupt) this._onInterrupt();
-    });
+    process.on('SIGINT', handleInterrupt);
 
     this.rl.on('line', (line) => {
       // Discard any input while the agent is processing
