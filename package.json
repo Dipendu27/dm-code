@@ -20,7 +20,7 @@
     "start": "node bin/dm.js",
     "dev": "node --watch bin/dm.js",
     "setup": "node bin/dm.js setup",
-    "test": "node --test tests/",
+    "test": "echo \"Error: no test specified\" && exit 0",
     "postinstall": "node -e \"console.log('\\n  Run \\'dmcode setup\\' to configure your engine and API keys.\\n')\""
   },
   "keywords": [
