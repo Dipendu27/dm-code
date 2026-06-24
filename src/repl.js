@@ -111,10 +111,6 @@ export class REPL {
 
     this.input.pause();
     this.processing = true;
-
-    // Register raw Ctrl+C listener so user can interrupt even while readline is paused
-    this.input.registerInterruptOverride(() => this._handleInterrupt());
-
     try {
       printUserPrompt(line);
       await this.agent.run(line);
@@ -122,8 +118,8 @@ export class REPL {
       printError(err.message);
     } finally {
       this.processing = false;
-      await this._saveMemory(); // persist memory to disk after each turn
-      this.input.resume(); // also clears the interrupt override
+      await this._saveMemory();
+      this.input.resume();
     }
   }
 

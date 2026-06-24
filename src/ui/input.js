@@ -17,12 +17,15 @@ export class InputHandler {
     this.rl = null;
     this._onLine = null;
     this._onClose = null;
+    this._onInterrupt = null;
+    this._paused = false;
   }
 
   // ── Bootstrap the readline interface ────────────────────────────────────────
   start({ onLine, onClose, onInterrupt }) {
     this._onLine = onLine;
     this._onClose = onClose;
+    this._onInterrupt = onInterrupt;
 
     // Fix 4.6: CJK mojibake (use StringDecoder to prevent splitting multi-byte chars)
     const decoder = new StringDecoder('utf8');
@@ -61,12 +64,21 @@ export class InputHandler {
       escapeCodeTimeout: 50, // Helps with fast bracketed paste sequences
     });
 
-    // Ctrl+C — cancel current op or exit
+    // Ctrl+C — fires even while processing because we no longer pause readline
     this.rl.on('SIGINT', () => {
-      if (onInterrupt) onInterrupt();
+      if (this._onInterrupt) this._onInterrupt();
+    });
+
+    // Belt-and-suspenders: process-level SIGINT for Windows terminals
+    // where readline's SIGINT may not fire in some edge cases
+    process.on('SIGINT', () => {
+      if (this._onInterrupt) this._onInterrupt();
     });
 
     this.rl.on('line', (line) => {
+      // Discard any input while the agent is processing
+      if (this._paused) return;
+
       const trimmed = line.trim();
       if (trimmed) {
         this.history.unshift(trimmed);
@@ -91,38 +103,23 @@ export class InputHandler {
     }
   }
 
-  // ── Pause/resume (used while streaming) ─────────────────────────────────────
+  // ── Pause/resume (used while agent is processing) ───────────────────────────
+  // IMPORTANT: We do NOT call this.rl.pause() anymore.
+  // Pausing readline kills stdin reading, which makes Ctrl+C undetectable.
+  // Instead, we mute the prompt and discard line events via the _paused flag.
   pause() {
-    if (this.rl) this.rl.pause();
-  }
-
-  resume() {
-    this.clearInterruptOverride();
+    this._paused = true;
+    // Hide the prompt cursor and suppress echo during processing
     if (this.rl) {
-      this.rl.resume();
-      this.rl.prompt();
+      this.rl.setPrompt('');
     }
   }
 
-  // ── Raw Ctrl+C listener for when readline is paused ─────────────────────────
-  // When readline is paused, it stops reading stdin, so SIGINT events never fire.
-  // This registers a raw stdin data listener that catches \x03 (Ctrl+C) directly.
-  registerInterruptOverride(callback) {
-    this.clearInterruptOverride();
-    this._rawInterruptHandler = (data) => {
-      // Check for Ctrl+C byte (0x03)
-      if (data.includes('\x03')) {
-        callback();
-      }
-    };
-    process.stdin.resume(); // ensure stdin is readable even when rl is paused
-    process.stdin.on('data', this._rawInterruptHandler);
-  }
-
-  clearInterruptOverride() {
-    if (this._rawInterruptHandler) {
-      process.stdin.removeListener('data', this._rawInterruptHandler);
-      this._rawInterruptHandler = null;
+  resume() {
+    this._paused = false;
+    if (this.rl) {
+      this.rl.setPrompt(PROMPT);
+      this.rl.prompt();
     }
   }
 
