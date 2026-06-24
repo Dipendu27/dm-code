@@ -22,17 +22,15 @@ DM Code is a **free, open-source Claude Code alternative** that runs from your t
 
 ## Quick Install
 
-### npm registry (after publish)
-
 ```bash
-npm install -g dm-code
+git clone https://github.com/Dipendu27/dm-code.git
+cd dm-code
+npm install
+npm link
 ```
 
-### From GitHub (always latest)
-
-```bash
-npm install -g git+https://github.com/Dipendu27/dm-code.git
-```
+> **Note:** `npm link` registers `dmcode`, `dm`, `dm-code`, and `annihilator` as global commands.
+> On macOS/Linux you can also run: `npm install -g git+https://github.com/Dipendu27/dm-code.git`
 
 That's it. Now type `dmcode` from **any directory** on **any device**:
 
@@ -53,14 +51,13 @@ dmcode setup        # guided model + API key configuration
 
 ## 🔄 How to Update
 
-Already have DM Code installed? Run one command to get the latest version:
+Already have DM Code installed? Pull the latest and re-link:
 
 ```bash
-# If installed via npm (recommended)
-npm install -g git+https://github.com/Dipendu27/dm-code.git
-
-# If cloned manually
-cd dm-code && git pull && npm install
+cd dm-code
+git pull
+npm install
+npm link
 ```
 
 Check your version:
