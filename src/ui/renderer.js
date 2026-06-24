@@ -348,13 +348,97 @@ export function printCommandOutput(cmd, stdout, stderr, exitCode) {
   console.log(c.muted('  └─'));
 }
 
-// ─── Thinking / spinner message ───────────────────────────────────────────────
-export function printThinking(msg = 'Annihilator is thinking…') {
-  process.stdout.write(c.muted(`  ◌ ${msg}`));
+// ─── Animated Thinking Spinner ────────────────────────────────────────────────
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+const THINKING_MESSAGES = [
+  'Annihilator is thinking…',
+  'Analyzing your request…',
+  'Cooking up a response…',
+  'Diving deep into the code…',
+  'Connecting the dots…',
+  'Working through it…',
+  'Crafting the perfect answer…',
+  'Almost there, hold tight…',
+  'Processing at light speed…',
+  'Gathering intelligence…',
+  'Brain cells firing…',
+  'Crunching the numbers…',
+  'Assembling the pieces…',
+  'Consulting the codebase…',
+  'Weaving some magic…',
+  'Neurons activated…',
+];
+
+class ThinkingSpinner {
+  constructor() {
+    this._interval = null;
+    this._frame = 0;
+    this._msgIndex = 0;
+    this._msgTick = 0;
+    this._startTime = 0;
+  }
+
+  start() {
+    if (this._interval) return; // already running
+    this._frame = 0;
+    this._msgIndex = Math.floor(Math.random() * THINKING_MESSAGES.length);
+    this._msgTick = 0;
+    this._startTime = Date.now();
+
+    this._render();
+    this._interval = setInterval(() => {
+      this._frame = (this._frame + 1) % SPINNER_FRAMES.length;
+      this._msgTick++;
+      // Rotate message every ~25 frames (~3 seconds)
+      if (this._msgTick % 25 === 0) {
+        this._msgIndex = (this._msgIndex + 1) % THINKING_MESSAGES.length;
+      }
+      this._render();
+    }, 120);
+  }
+
+  _render() {
+    const spinner = chalk.hex(THEME.primary)(SPINNER_FRAMES[this._frame]);
+    const msg = THINKING_MESSAGES[this._msgIndex];
+    const elapsed = ((Date.now() - this._startTime) / 1000).toFixed(0);
+    const timer = c.dim(` ${elapsed}s`);
+    const line = `  ${spinner} ${c.muted(msg)}${timer}`;
+    process.stdout.write(`\r\x1b[2K${line}`);
+  }
+
+  stop() {
+    if (this._interval) {
+      clearInterval(this._interval);
+      this._interval = null;
+    }
+    // Clear the spinner line
+    process.stdout.write('\r\x1b[2K');
+  }
+
+  get running() {
+    return this._interval !== null;
+  }
+}
+
+let _spinner = null;
+
+export function startThinking() {
+  if (!_spinner) _spinner = new ThinkingSpinner();
+  _spinner.start();
+}
+
+export function stopThinking() {
+  if (_spinner) _spinner.stop();
+}
+
+// Legacy aliases for backward compat
+export function printThinking(msg) {
+  startThinking();
 }
 
 export function clearThinking() {
-  process.stdout.write('\r' + ' '.repeat(60) + '\r');
+  stopThinking();
 }
 
 // ─── Info / status messages ───────────────────────────────────────────────────

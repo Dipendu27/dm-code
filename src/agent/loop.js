@@ -26,6 +26,8 @@ import {
   printDiff,
   printOllamaFallback,
   printInfo,
+  startThinking,
+  stopThinking,
 } from '../ui/renderer.js';
 import {
   ProviderClient,
@@ -93,8 +95,12 @@ export class AgentLoop {
         // Fix 1: Check context budget and auto-compact if needed
         await this._checkContextBudget();
 
+        // Show animated spinner while waiting for model response
+        startThinking();
+
         const response = await this._callModelWithFallback();
         if (response === null) {
+          stopThinking();
           console.log();
           printWarning('Request cancelled.');
           break;
@@ -202,6 +208,7 @@ export class AgentLoop {
         if (stopReason === 'end_turn') break;
       }
     } catch (err) {
+      stopThinking();
       if (err.name === 'AbortError') {
         printWarning('Request aborted.');
       } else {
@@ -232,7 +239,8 @@ export class AgentLoop {
     } catch (err) {
       if (!this._isRateLimitError(err)) throw err;
 
-      // Rate limit hit — try cloud fallback providers
+      // Rate limit hit — stop spinner and try cloud fallback providers
+      stopThinking();
       printWarning(`Rate limit on ${this.model.provider}. Trying fallback providers...`);
 
       // Build fallback list: FALLBACK_ORDER minus the primary, minus providers with no key
@@ -496,6 +504,9 @@ export class AgentLoop {
           const jitter = Math.random() * 500;
           const delay = Math.min(baseDelay + jitter, 30_000);
           
+          // Stop spinner so retry message shows cleanly
+          stopThinking();
+
           // Fix 6.4/6.5: Connection drops mid-thinking and retry indicator clears
           process.stdout.write(
             `\n\x1b[33m  ⚠ Connection dropped — retrying in ${Math.round(delay / 1000)}s...\x1b[0m\n`
@@ -503,8 +514,9 @@ export class AgentLoop {
           
           await new Promise(r => setTimeout(r, delay));
           
-          // Clear the retry message
+          // Clear the retry message and restart spinner
           process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
+          startThinking();
           continue;
         }
 
@@ -551,11 +563,13 @@ export class AgentLoop {
 
         if (t === 'content_block_start') {
           if (event.content_block.type === 'tool_use') {
+            stopThinking();
             currentToolId   = event.content_block.id;
             currentToolName = event.content_block.name;
             currentInputStr = '';
           }
           if (event.content_block.type === 'text' && firstText) {
+            stopThinking();
             printAssistantPrefix();
             firstText = false;
           }
@@ -603,6 +617,7 @@ export class AgentLoop {
 
       if (event.type === 'text') {
         if (firstText) {
+          stopThinking();
           printAssistantPrefix();
           firstText = false;
         }
@@ -629,6 +644,7 @@ export class AgentLoop {
 
       if (event.type === 'text') {
         if (firstText) {
+          stopThinking();
           printAssistantPrefix();
           firstText = false;
         }

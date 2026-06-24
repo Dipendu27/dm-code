@@ -30,6 +30,7 @@ export class REPL {
     this.agent       = null;
     this.input       = new InputHandler();
     this.processing  = false;
+    this._pendingExit = false;
     this._memoryFile = path.join(this.cwd, '.dmcode-memory.json');
   }
 
@@ -91,6 +92,16 @@ export class REPL {
 
   async _handleLine(line) {
     if (!line) { this.input.prompt(); return; }
+
+    // Reset pending-exit flag on any new input
+    this._pendingExit = false;
+
+    // Intercept bare "exit" / "quit" without the slash prefix
+    const lower = line.toLowerCase();
+    if (lower === 'exit' || lower === 'quit' || lower === 'q') {
+      this._exit();
+      return;
+    }
 
     if (line.startsWith('/')) {
       await this._handleCommand(line);
@@ -372,10 +383,14 @@ export class REPL {
       console.log();
       printWarning('Interrupted.');
       this.input.resume();
+    } else if (this._pendingExit) {
+      // Second Ctrl+C — exit immediately
+      this._exit();
     } else {
+      // First Ctrl+C at idle prompt — warn and arm the flag
+      this._pendingExit = true;
       console.log();
       printInfo('Press Ctrl+C again or /exit to quit.');
-      process.once('SIGINT', () => this._exit());
     }
   }
 
