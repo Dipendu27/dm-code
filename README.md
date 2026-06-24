@@ -378,5 +378,5 @@ Users can then install globally with `npm install -g dm-code`.
 
 MIT — free to use, modify, and distribute.
 
-Built by [Dipendu Mondal](https://github.com/Dipendu27).  
+Built by [Dipendu Mukherjee](https://github.com/Dipendu27).  
 Inspired by [Claude Code](https://claude.ai/code) by Anthropic.
