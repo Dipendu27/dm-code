@@ -69,7 +69,36 @@ dmcode --version
 
 ## 📋 Changelog
 
-### v1.1.1 — *Latest*
+### v1.2.0 — *Latest*
+
+**✨ Major Features**
+- New input validation layer prevents directory traversal & injection attacks
+- Enhanced error handling with retry logic, exponential backoff, and timeouts
+- Structured logging system with DEBUG support for diagnostics
+- New utility modules: `validation.js`, `errors.js`, `logger.js`
+
+**🔒 Security Improvements**
+- Path traversal prevention for all file operations
+- Improved command injection pattern detection
+- Better dangerous command classification with explanations
+
+**🚀 Performance & Reliability**
+- Configurable request timeouts (60s default)
+- Exponential backoff with jitter for retries (capped at 30s)
+- Optimized streaming response parsing
+- Better session cleanup and MCP schema management
+
+[See full CHANGELOG](./CHANGELOG.md)
+
+### v1.1.2
+
+**🔧 Critical Bug Fixes**
+- Fixed Anthropic model IDs — `claude-haiku-3-5` → `claude-haiku-4-5`, `claude-sonnet-4-5` → `claude-sonnet-4-6` (previous IDs caused "model not found" API errors)
+- Updated Claude Sonnet 4.6 context window from 200K → **1M tokens** (matches Anthropic docs)
+- Updated global `MAX_CONTEXT_TOKENS` ceiling to 1M to match largest supported model
+- Added `DEBUG=1` env var support for diagnosing silent errors in session/memory persistence
+
+### v1.1.1
 
 **🛑 Ctrl+C Interrupt Fix**
 - Ctrl+C now **always works** — even while the AI is processing or streaming
@@ -109,8 +138,8 @@ dmcode --version
 
 | # | Model | Provider | Tier | Speed | Best For |
 |---|-------|----------|------|-------|----------|
-| 1 | **Claude Haiku 3.5** ✦ | Anthropic | FREE* | Fastest | Quick tasks, fast iteration |
-| 2 | Claude Sonnet 4.5 | Anthropic | FREE* | Fast | Complex refactoring, architecture |
+| 1 | **Claude Haiku 4.5** ✦ | Anthropic | FREE* | Fastest | Quick tasks, fast iteration |
+| 2 | Claude Sonnet 4.6 | Anthropic | FREE* | Fast | Complex refactoring, architecture (1M ctx) |
 | 3 | **Gemini 2.0 Flash** ✦ | Google | FREE | Fastest | Large codebases, 1M token context |
 | 4 | Gemini 2.0 Flash Thinking | Google | FREE | Medium | Hard algorithms, deep reasoning |
 | 5 | Gemini 1.5 Flash | Google | FREE | Very Fast | Lightweight tasks, large file reads |
@@ -309,18 +338,25 @@ dm-code/
 │   ├── repl.js                 ← Main REPL orchestrator
 │   ├── agent/
 │   │   ├── loop.js             ← Agentic loop (multi-provider)
-│   │   └── providers.js        ← Anthropic / Google / Groq / Mistral clients
+│   │   ├── providers.js        ← Anthropic / Google / Groq / Mistral clients
+│   │   ├── session.js          ← Session persistence
+│   │   └── mcp-manager.js      ← MCP schema management
 │   ├── tools/
 │   │   └── executor.js         ← All 12 tool implementations
 │   ├── ui/
 │   │   ├── renderer.js         ← Terminal UI (Claude Code visual style)
 │   │   ├── input.js            ← Readline REPL handler
 │   │   └── model-picker.js     ← Interactive model selection UI
-│   └── config/
-│       ├── constants.js        ← MODELS registry, theme, system prompt
-│       └── settings.js         ← Persistent config (per-provider API keys)
+│   ├── config/
+│   │   ├── constants.js        ← MODELS registry, theme, system prompt
+│   │   └── settings.js         ← Persistent config (per-provider API keys)
+│   └── utils/
+│       ├── validation.js       ← Input validation & security checks
+│       ├── errors.js           ← Custom error types & handling
+│       └── logger.js           ← Structured logging
 ├── install.sh                  ← macOS / Linux installer
 ├── install.ps1                 ← Windows PowerShell installer
+├── CHANGELOG.md                ← Version history
 ├── .npmignore                  ← npm publish exclusions
 ├── package.json
 └── README.md
@@ -360,6 +396,8 @@ export GOOGLE_API_KEY="AIzaSy..."
 export GROQ_API_KEY="gsk_..."
 export MISTRAL_API_KEY="..."
 export DM_MODEL="gemini-2.0-flash"   # default engine override
+export DEBUG=1                       # enable debug logging
+export DEBUG=verbose                 # extra verbose debug output
 ```
 
 Environment variables always take priority over saved config.
@@ -421,6 +459,18 @@ Try a different provider — if Groq is rate-limiting, switch to Google:
 dmcode model   # interactive picker
 ```
 
+### Enable Debug Logging
+
+For diagnostic information, run with DEBUG enabled:
+```bash
+DEBUG=1 dmcode
+```
+
+Or for very verbose logging:
+```bash
+DEBUG=verbose dmcode
+```
+
 ---
 
 ## Publishing to npm
@@ -433,6 +483,16 @@ npm publish
 ```
 
 Users can then install globally with `npm install -g git+https://github.com/Dipendu27/dm-code.git` (or `npm install -g dm-code` once published).
+
+---
+
+## Security & Privacy
+
+- **File Operations**: All file paths are validated to prevent directory traversal
+- **Command Execution**: Dangerous commands are flagged and require confirmation
+- **API Keys**: Keys are stored in OS config and never logged
+- **Sessions**: Session files are stored in `~/.dmcode/sessions` (local machine only)
+- **No Telemetry**: DM Code collects no usage data
 
 ---
 

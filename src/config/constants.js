@@ -5,11 +5,11 @@ export const TOOL_NAME     = 'DM Code';
 export const TOOL_BINARY   = 'dm';
 export const MODEL_NAME    = 'annihilator';
 export const MODEL_DISPLAY = 'Annihilator';
-export const MODEL_VERSION = '1.1.1';
-export const TOOL_VERSION  = '1.1.1';
+export const MODEL_VERSION = '1.2.0';
+export const TOOL_VERSION  = '1.2.0';
 
 export const MAX_TOKENS              = 8096;
-export const MAX_CONTEXT_TOKENS      = 200000;
+export const MAX_CONTEXT_TOKENS      = 1_000_000;
 export const TEMPERATURE             = 1.0;
 export const COMPACT_THRESHOLD       = 0.50;  // Compact at 50% context usage
 export const AUTO_COMPACT_THRESHOLD  = 0.70;  // Auto-compact at 70% context usage
@@ -22,8 +22,8 @@ export const OLLAMA_BASE_URL         = 'http://localhost:11434';
 export const MODELS = [
   // ── Anthropic ─────────────────────────────────────────────────────────────
   {
-    id:            'claude-haiku-3-5-20251001',
-    displayName:   'Claude Haiku 3.5',
+    id:            'claude-haiku-4-5-20251001',
+    displayName:   'Claude Haiku 4.5',
     provider:      'anthropic',
     providerLabel: 'Anthropic',
     tier:          'FREE_QUOTA',
@@ -37,15 +37,15 @@ export const MODELS = [
     recommended:   true,
   },
   {
-    id:            'claude-sonnet-4-5',
-    displayName:   'Claude Sonnet 4.5',
+    id:            'claude-sonnet-4-6',
+    displayName:   'Claude Sonnet 4.6',
     provider:      'anthropic',
     providerLabel: 'Anthropic',
     tier:          'FREE_QUOTA',
     speed:         'Fast',
     quality:       '★★★★★',
-    context:       '200K tokens',
-    contextTokens: 200_000,
+    context:       '1M tokens',
+    contextTokens: 1_000_000,
     bestFor:       'Complex refactoring, architecture, debugging',
     apiKeyEnv:     'ANTHROPIC_API_KEY',
     apiKeyUrl:     'https://console.anthropic.com',
@@ -296,4 +296,3 @@ You are running on ${osName} (${archName}). ${hints}`;
 
 // Kept for backward compatibility — resolves at import time
 export const ANNIHILATOR_SYSTEM_PROMPT = buildSystemPrompt();
-

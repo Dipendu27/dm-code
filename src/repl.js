@@ -321,7 +321,9 @@ export class REPL {
     try {
       const data = await fs.readFile(this._memoryFile, 'utf-8');
       this.memory = JSON.parse(data);
-    } catch {
+    } catch (err) {
+      // File may not exist on first run — that's expected
+      if (process.env.DEBUG && err.code !== 'ENOENT') console.error('[dmcode] memory load failed:', err.message);
       this.memory = {};
     }
   }
@@ -329,7 +331,9 @@ export class REPL {
   async _saveMemory() {
     try {
       await fs.writeFile(this._memoryFile, JSON.stringify(this.memory, null, 2), 'utf-8');
-    } catch { /* ignore write errors */ }
+    } catch (err) {
+      if (process.env.DEBUG) console.error('[dmcode] memory save failed:', err.message);
+    }
   }
 
   async _changeDirectory(target) {

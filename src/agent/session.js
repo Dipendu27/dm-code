@@ -33,8 +33,8 @@ export class SessionPersistence {
         status: state.status || 'active',  // active | completed | crashed
       };
       fsSync.writeFileSync(this.file, JSON.stringify(data, null, 2), 'utf-8');
-    } catch {
-      // Silently ignore write errors — don't break the session
+    } catch (err) {
+      if (process.env.DEBUG) console.error('[dmcode] session save failed:', err.message);
     }
   }
 
@@ -44,7 +44,8 @@ export class SessionPersistence {
       if (!fsSync.existsSync(this.file)) return null;
       const raw = fsSync.readFileSync(this.file, 'utf-8');
       return JSON.parse(raw);
-    } catch {
+    } catch (err) {
+      if (process.env.DEBUG) console.error('[dmcode] session restore failed:', err.message);
       return null;
     }
   }
@@ -57,7 +58,9 @@ export class SessionPersistence {
         data.status = 'completed';
         fsSync.writeFileSync(this.file, JSON.stringify(data, null, 2), 'utf-8');
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      if (process.env.DEBUG) console.error('[dmcode] session markCompleted failed:', err.message);
+    }
   }
 
   // List all saved sessions
