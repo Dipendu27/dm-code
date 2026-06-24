@@ -8,6 +8,7 @@ import {
   AUTO_COMPACT_THRESHOLD,
   COMPACT_THRESHOLD,
   getModelById,
+  MODELS,
 } from '../config/constants.js';
 import { TOOL_DEFINITIONS, ToolExecutor, isSafeCommand } from '../tools/executor.js';
 import {
@@ -33,11 +34,12 @@ import {
   isOllamaAvailable,
   convertToOpenAIMessages,
 } from './providers.js';
-import { getSelectedModelId } from '../config/settings.js';
+import { getSelectedModelId, getApiKey } from '../config/settings.js';
 import { SessionPersistence } from './session.js';
 import { MCPSchemaManager } from './mcp-manager.js';
 
 const MAX_TOOL_ROUNDS = 30;
+const FALLBACK_ORDER = ['google', 'groq', 'anthropic', 'mistral'];
 
 export class AgentLoop {
   constructor({ cwd, onConfirm, autoApprove = false, verbose = false, memoryRef, sessionId }) {
@@ -223,29 +225,90 @@ export class AgentLoop {
     this.abortController = null;
   }
 
-  // ── Call model with Ollama fallback (Fix 1) ──────────────────────────────────
+  // ── Call model with cloud provider + Ollama fallback ─────────────────────────
   async _callModelWithFallback() {
     try {
       return await this._callModel();
     } catch (err) {
-      // Check if this is a rate limit error and Ollama is available
-      if (this._isRateLimitError(err)) {
-        const ollamaReady = await isOllamaAvailable();
-        if (ollamaReady && !this._ollamaFallback) {
-          this._ollamaFallback = true;
-          printOllamaFallback(err.message);
+      if (!this._isRateLimitError(err)) throw err;
 
-          // Route through Ollama
+      // Rate limit hit — try cloud fallback providers
+      printWarning(`Rate limit on ${this.model.provider}. Trying fallback providers...`);
+
+      // Build fallback list: FALLBACK_ORDER minus the primary, minus providers with no key
+      const fallbacks = FALLBACK_ORDER.filter(p => {
+        if (p === this.model.provider) return false;
+        const key = getApiKey(p);
+        return !!key;
+      });
+
+      for (const fallbackProvider of fallbacks) {
+        try {
+          printInfo(`→ Trying ${fallbackProvider}...`);
+          const fallbackParams = this._buildFallbackParams(fallbackProvider);
+          if (!fallbackParams) continue;
+
+          // Temporarily switch client for this call
+          const origClient = this.client;
+          const origModel = this.model;
+          const origModelId = this.modelId;
+
+          this.client = new ProviderClient(fallbackParams.modelId);
+          this.model = fallbackParams.model;
+          this.modelId = fallbackParams.modelId;
+
           try {
-            return await this._callOllama();
-          } catch (ollamaErr) {
-            printWarning(`Ollama fallback also failed: ${ollamaErr.message}`);
-            throw err;  // throw original error
+            const result = await this._callModel();
+            printInfo(`[Used ${fallbackProvider} as fallback — your default model is unchanged]`);
+            // Restore original client for next turn
+            this.client = origClient;
+            this.model = origModel;
+            this.modelId = origModelId;
+            return result;
+          } catch (fallbackErr) {
+            // Restore original client
+            this.client = origClient;
+            this.model = origModel;
+            this.modelId = origModelId;
+
+            if (this._isRateLimitError(fallbackErr)) {
+              printWarning(`${fallbackProvider} also rate-limited. Trying next...`);
+              continue;
+            }
+            throw fallbackErr;
           }
+        } catch (outerErr) {
+          if (this._isRateLimitError(outerErr)) continue;
+          throw outerErr;
         }
       }
-      throw err;
+
+      // Last resort: try Ollama if available
+      const ollamaReady = await isOllamaAvailable();
+      if (ollamaReady && !this._ollamaFallback) {
+        this._ollamaFallback = true;
+        printOllamaFallback(err.message);
+        try {
+          return await this._callOllama();
+        } catch (ollamaErr) {
+          printWarning(`Ollama fallback also failed: ${ollamaErr.message}`);
+        }
+      }
+
+      throw new Error('All configured providers are rate-limited. Please wait a few minutes and try again.');
     }
+  }
+
+  // ── Build params for a fallback provider ─────────────────────────────────────
+  _buildFallbackParams(provider) {
+    const fallbackModel = MODELS.find(m => m.provider === provider && m.recommended);
+    if (!fallbackModel) {
+      // If no recommended model, take the first for that provider
+      const anyModel = MODELS.find(m => m.provider === provider);
+      if (!anyModel) return null;
+      return { modelId: anyModel.id, model: anyModel };
+    }
+    return { modelId: fallbackModel.id, model: fallbackModel };
   }
 
   // ── Call Ollama directly ─────────────────────────────────────────────────────
@@ -276,8 +339,18 @@ export class AgentLoop {
 
   // ── Check if error is a rate limit ──────────────────────────────────────────
   _isRateLimitError(err) {
-    const msg = err.message || '';
-    return /429|rate.?limit/i.test(msg) || err.status === 429;
+    const status = err.status ?? err.statusCode ?? err.response?.status;
+    const msg = (err.message ?? '').toLowerCase();
+
+    return (
+      status === 429 ||
+      msg.includes('rate_limit') ||
+      msg.includes('rate limit') ||
+      msg.includes('quota') ||
+      msg.includes('too many requests') ||
+      msg.includes('resource_exhausted') ||
+      msg.includes('tokens per minute')
+    );
   }
 
   // ── Check context budget and auto-compact (Fix 1 & 2) ──────────────────────

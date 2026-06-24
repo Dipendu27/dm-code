@@ -396,6 +396,8 @@ export function printHelp() {
     ['/cd <path>',       'Change working directory'],
     ['/sessions',        'List all saved sessions'],
     ['/resume <id>',     'Resume a previously saved session'],
+    ['/save',            'Export session to Markdown (default: dm-session-<timestamp>.md)'],
+    ['/save <filename>', 'Export session to a specific filename or path'],
     ['/exit, /quit',     'Exit DM Code'],
     ['',                 ''],
     ['Keyboard shortcuts:', ''],

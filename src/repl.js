@@ -2,6 +2,7 @@
 
 import chalk from 'chalk';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import { InputHandler }      from './ui/input.js';
 import { AgentLoop }         from './agent/loop.js';
@@ -188,6 +189,10 @@ export class REPL {
 
       case 'sessions':
         await this._listSessions();
+        break;
+
+      case 'save':
+        await this._handleSave(arg || null);
         break;
 
       case 'exit': case 'quit': case 'q':
@@ -429,5 +434,83 @@ export class REPL {
   async _listSessions() {
     const sessions = await SessionPersistence.listSessions();
     printSessionList(sessions);
+  }
+
+  // ── /save — export session to Markdown file ──────────────────────────────
+  async _handleSave(userFilename) {
+    const history = this.agent?.history || [];
+    const modelId = getSelectedModelId();
+    const model = getModelById(modelId);
+
+    // Build default filename if none provided
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const defaultName = `dm-session-${timestamp}.md`;
+    const filename = userFilename ?? defaultName;
+
+    // Resolve to absolute path relative to the current working directory
+    const outputPath = path.isAbsolute(filename)
+      ? filename
+      : path.join(this.cwd, filename);
+
+    // Ensure parent directory exists for nested paths
+    const parentDir = path.dirname(outputPath);
+    fsSync.mkdirSync(parentDir, { recursive: true });
+
+    // Build Markdown content
+    const lines = [];
+    lines.push(`# DM Code Session`);
+    lines.push(``);
+    lines.push(`| Field | Value |`);
+    lines.push(`|---|---|`);
+    lines.push(`| **Exported** | ${new Date().toISOString()} |`);
+    lines.push(`| **Model** | ${model.displayName} |`);
+    lines.push(`| **Working Dir** | \`${this.cwd}\` |`);
+    lines.push(`| **Messages** | ${history.length} |`);
+    lines.push(``);
+    lines.push(`---`);
+    lines.push(``);
+
+    for (const msg of history) {
+      // Skip system messages from the export
+      if (msg.role === 'system') continue;
+
+      const role = msg.role === 'user' ? '## 👤 User' : '## 🤖 Annihilator';
+      lines.push(role);
+      lines.push(``);
+
+      // msg.content can be a string or an array of content blocks (Anthropic format)
+      if (typeof msg.content === 'string') {
+        lines.push(msg.content);
+      } else if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'text') {
+            lines.push(block.text);
+          } else if (block.type === 'tool_use') {
+            lines.push(`> 🔧 Tool call: \`${block.name}\``);
+            lines.push(`> \`\`\`json`);
+            lines.push(`> ${JSON.stringify(block.input, null, 2)}`);
+            lines.push(`> \`\`\``);
+          } else if (block.type === 'tool_result') {
+            lines.push(`> ✅ Tool result:`);
+            lines.push(`> \`\`\``);
+            lines.push(`> ${String(block.content).slice(0, 500)}`);
+            lines.push(`> \`\`\``);
+          }
+        }
+      }
+
+      lines.push(``);
+      lines.push(`---`);
+      lines.push(``);
+    }
+
+    const markdown = lines.join('\n');
+
+    try {
+      fsSync.writeFileSync(outputPath, markdown, 'utf8');
+      printSuccess(`Session saved → ${outputPath}`);
+    } catch (err) {
+      printError(`Save failed: ${err.message}`);
+    }
   }
 }

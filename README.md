@@ -2,6 +2,7 @@
 
 > Agentic AI coding assistant for your terminal — powered by **Annihilator**
 
+[![dm-code version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FDipendu27%2Fdm-code%2Fmain%2Fpackage.json&query=%24.version&label=dm-code&color=blueviolet&logo=npm)](https://github.com/Dipendu27/dm-code)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue.svg)](#)
@@ -21,7 +22,13 @@ DM Code is a **free, open-source Claude Code alternative** that runs from your t
 
 ## Quick Install
 
-### npm (Recommended — works everywhere)
+### npm registry (after publish)
+
+```bash
+npm install -g dm-code
+```
+
+### From GitHub (always latest)
 
 ```bash
 npm install -g git+https://github.com/Dipendu27/dm-code.git
@@ -213,6 +220,8 @@ dmcode keys clear groq                 # remove a key
 | `/memory` | Show session memory |
 | `/cwd` | Show current working directory |
 | `/cd <path>` | Change working directory |
+| `/save` | Export session to Markdown file |
+| `/save <filename>` | Export session to a specific filename or path |
 | `/exit` | Exit DM Code |
 
 ---
