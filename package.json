@@ -1,0 +1,66 @@
+{
+  "name": "dm-code",
+  "version": "1.0.0",
+  "description": "DM Code — Agentic AI coding assistant for your terminal. Works on macOS, Linux, and Windows.",
+  "main": "src/repl.js",
+  "bin": {
+    "dm": "./bin/dm.js",
+    "dm-code": "./bin/dm.js",
+    "dmcode": "./bin/dm.js",
+    "annihilator": "./bin/dm.js"
+  },
+  "type": "module",
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/dm.js",
+    "dev": "node --watch bin/dm.js",
+    "setup": "node bin/dm.js setup",
+    "test": "node --test tests/",
+    "postinstall": "node -e \"console.log('\\n  Run \\'dmcode setup\\' to configure your engine and API keys.\\n')\""
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "coding-assistant",
+    "annihilator",
+    "dm-code",
+    "dmcode",
+    "terminal",
+    "agentic",
+    "claude",
+    "gemini",
+    "llama",
+    "free"
+  ],
+  "author": "Dipendu Mondal",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dipendu27/dm-code.git"
+  },
+  "homepage": "https://github.com/Dipendu27/dm-code#readme",
+  "bugs": {
+    "url": "https://github.com/Dipendu27/dm-code/issues"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@google/generative-ai": "^0.24.1",
+    "boxen": "^8.0.1",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "conf": "^13.1.0",
+    "execa": "^9.5.2",
+    "glob": "^11.0.2",
+    "gradient-string": "^3.0.0",
+    "strip-ansi": "^7.1.0",
+    "wrap-ansi": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

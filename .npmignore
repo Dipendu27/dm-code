@@ -1,0 +1,30 @@
+# Development & CI
+.git/
+.github/
+.gitignore
+.eslintrc*
+.prettierrc*
+.editorconfig
+.vscode/
+.idea/
+
+# Installers (users get the package via npm)
+install.sh
+install.ps1
+
+# Tests & dev files
+tests/
+coverage/
+*.test.js
+*.spec.js
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Build artifacts
+node_modules/
+*.log
+*.tgz
