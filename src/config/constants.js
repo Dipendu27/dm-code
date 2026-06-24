@@ -5,8 +5,8 @@ export const TOOL_NAME     = 'DM Code';
 export const TOOL_BINARY   = 'dm';
 export const MODEL_NAME    = 'annihilator';
 export const MODEL_DISPLAY = 'Annihilator';
-export const MODEL_VERSION = '1.0.0';
-export const TOOL_VERSION  = '1.0.0';
+export const MODEL_VERSION = '1.1.0';
+export const TOOL_VERSION  = '1.1.0';
 
 export const MAX_TOKENS              = 8096;
 export const MAX_CONTEXT_TOKENS      = 200000;

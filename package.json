@@ -1,6 +1,6 @@
 {
   "name": "dm-code",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "DM Code — Agentic AI coding assistant for your terminal. Works on macOS, Linux, and Windows.",
   "main": "src/repl.js",
   "bin": {

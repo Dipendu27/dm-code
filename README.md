@@ -51,6 +51,54 @@ dmcode setup        # guided model + API key configuration
 
 ---
 
+## 🔄 How to Update
+
+Already have DM Code installed? Run one command to get the latest version:
+
+```bash
+# If installed via npm (recommended)
+npm install -g git+https://github.com/Dipendu27/dm-code.git
+
+# If cloned manually
+cd dm-code && git pull && npm install
+```
+
+Check your version:
+```bash
+dmcode --version
+```
+
+---
+
+## 📋 Changelog
+
+### v1.1.0 — *Latest*
+
+**🎯 Exit & Interrupt Fixes**
+- `exit`, `quit`, and `q` now work directly — no need to type `/exit`
+- Double `Ctrl+C` now reliably exits the app (fixed race condition)
+
+**✨ Animated Thinking Spinner**
+- New braille-animated spinner with fun rotating status messages while the AI is processing
+- Shows elapsed time so you always know something is happening
+- Messages cycle through: *"Cooking up a response…"*, *"Diving deep into the code…"*, *"Weaving some magic…"* and more
+
+### v1.0.1
+
+- Initial streaming support across all 4 providers
+- `/save` command for session export
+- Automatic rate-limit fallback across providers
+- Session persistence and restore
+- Context window auto-compaction
+
+### v1.0.0
+
+- Initial release with 11 free models across 4 providers
+- 12 built-in tools (read, write, edit, run, search, etc.)
+- Interactive model picker and API key management
+
+---
+
 ## Free Models Available
 
 | # | Model | Provider | Tier | Speed | Best For |
