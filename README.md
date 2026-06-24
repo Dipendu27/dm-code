@@ -69,7 +69,16 @@ dmcode --version
 
 ## 📋 Changelog
 
-### v1.1.0 — *Latest*
+### v1.1.1 — *Latest*
+
+**🛑 Ctrl+C Interrupt Fix**
+- Ctrl+C now **always works** — even while the AI is processing or streaming
+- Fixed on Windows: readline is no longer paused, so SIGINT stays alive on all platforms
+- Added process-level SIGINT fallback for Windows terminal edge cases
+- Abort signal now passed to API calls for instant network cancellation
+- Fixed double "Goodbye!" message on exit (debounced duplicate SIGINT handlers)
+
+### v1.1.0
 
 **🎯 Exit & Interrupt Fixes**
 - `exit`, `quit`, and `q` now work directly — no need to type `/exit`
