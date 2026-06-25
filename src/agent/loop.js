@@ -155,7 +155,9 @@ export class AgentLoop {
           }
 
           const needsConfirm = this._needsConfirmation(toolName, toolInput);
-          if (needsConfirm && !this.autoApprove) {
+          const isDangerous = toolName === 'run_command' && !isSafeCommand(toolInput?.command || '');
+          
+          if (needsConfirm && (!this.autoApprove || isDangerous)) {
             // Skip double-confirmation for file mutations already confirmed in _previewFileChange
             const alreadyConfirmed = this._isFileModification(toolName);
             if (!alreadyConfirmed) {
