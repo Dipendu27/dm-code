@@ -69,7 +69,7 @@ dmcode --version
 
 ## 📋 Changelog
 
-### v1.3.1 — *Latest*
+### v1.3.2 — *Latest*
 
 **✨ Major Features**
 - **Public NPM Release!** You can now install globally via `npm install -g dm-code`
