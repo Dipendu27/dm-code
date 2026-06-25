@@ -69,18 +69,13 @@ dmcode --version
 
 ## 📋 Changelog
 
-### v1.3.2 — *Latest*
+### v1.3.3 — *Latest*
 
 **✨ Major Features**
-- **Public NPM Release!** You can now install globally via `npm install -g dm-code`
-- New CI Pipeline for automated tests on Windows, macOS, and Linux
-- Improved terminal UI renderer and security auto-approve strictness
+- **IDE Diff Viewer**: DM Code now automatically opens a side-by-side diff in your IDE (VS Code or Cursor) whenever it modifies a file using the `edit_file` or `write_file` tools.
+- **Backend Thought Blocks**: Added native terminal rendering for `<think>` blocks. When models like DeepSeek R1 or Gemini Thinking emit thought processes, they are now neatly formatted in a dimmed `▶ Backend thought` block in real-time.
 
-**🔒 Security Improvements**
-- Patched an edge-case path traversal bypass in `validateFilePath`
-- Sanitized Session IDs to prevent localized path traversal
-
-### v1.2.0
+### v1.3.2
 
 **✨ Major Features**
 - New input validation layer prevents directory traversal & injection attacks
