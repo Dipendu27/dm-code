@@ -69,7 +69,12 @@ dmcode --version
 
 ## 📋 Changelog
 
-### v1.3.3 — *Latest*
+### v1.3.4 — *Latest*
+
+**🐛 Bug Fixes**
+- **Google API Compatibility**: Updated Google Gemini model endpoints from `gemini-2.0-flash-thinking-exp` to `gemini-2.5-pro` and `gemini-3.5-flash` to resolve a `404 Not Found` API breakage caused by Google deprecating experimental endpoints.
+
+### v1.3.3
 
 **✨ Major Features**
 - **IDE Diff Viewer**: DM Code now automatically opens a side-by-side diff in your IDE (VS Code or Cursor) whenever it modifies a file using the `edit_file` or `write_file` tools.

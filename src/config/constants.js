@@ -5,8 +5,8 @@ export const TOOL_NAME     = 'DM Code';
 export const TOOL_BINARY   = 'dm';
 export const MODEL_NAME    = 'annihilator';
 export const MODEL_DISPLAY = 'Annihilator';
-export const MODEL_VERSION = '1.3.3';
-export const TOOL_VERSION  = '1.3.3';
+export const MODEL_VERSION = '1.3.4';
+export const TOOL_VERSION  = '1.3.4';
 
 export const MAX_TOKENS              = 8096;
 export const MAX_CONTEXT_TOKENS      = 1_000_000;
@@ -54,8 +54,8 @@ export const MODELS = [
 
   // ── Google Gemini ─────────────────────────────────────────────────────────
   {
-    id:            'gemini-2.0-flash',
-    displayName:   'Gemini 2.0 Flash',
+    id:            'gemini-3.5-flash',
+    displayName:   'Gemini 3.5 Flash',
     provider:      'google',
     providerLabel: 'Google AI',
     tier:          'FREE',
@@ -69,8 +69,8 @@ export const MODELS = [
     recommended:   true,
   },
   {
-    id:            'gemini-2.0-flash-thinking-exp',
-    displayName:   'Gemini 2.0 Flash Thinking',
+    id:            'gemini-2.5-pro',
+    displayName:   'Gemini 2.5 Pro',
     provider:      'google',
     providerLabel: 'Google AI',
     tier:          'FREE',
@@ -84,8 +84,8 @@ export const MODELS = [
     recommended:   false,
   },
   {
-    id:            'gemini-1.5-flash',
-    displayName:   'Gemini 1.5 Flash',
+    id:            'gemini-2.5-flash',
+    displayName:   'Gemini 2.5 Flash',
     provider:      'google',
     providerLabel: 'Google AI',
     tier:          'FREE',
