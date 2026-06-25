@@ -11,7 +11,7 @@ const SESSION_DIR = path.join(os.homedir(), '.dmcode', 'sessions');
 
 export class SessionPersistence {
   constructor(sessionId) {
-    this.sessionId = sessionId || crypto.randomUUID().slice(0, 8);
+    this.sessionId = sessionId ? path.basename(sessionId) : crypto.randomUUID().slice(0, 8);
     this.file = path.join(SESSION_DIR, `${this.sessionId}.json`);
     // Ensure session directory exists
     fsSync.mkdirSync(SESSION_DIR, { recursive: true });

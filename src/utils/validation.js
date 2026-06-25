@@ -19,8 +19,8 @@ export function validateFilePath(filePath, basePath = process.cwd()) {
   const absolutePath = path.resolve(basePath, filePath);
   const realBasePath = path.resolve(basePath);
 
-  // Prevent directory traversal: ensure result starts with base
-  if (!absolutePath.startsWith(realBasePath)) {
+  // Prevent directory traversal: ensure result starts with base directory
+  if (absolutePath !== realBasePath && !absolutePath.startsWith(realBasePath + path.sep)) {
     throw new Error(`Path traversal detected: ${filePath} attempts to escape base directory`);
   }
 
