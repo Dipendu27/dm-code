@@ -29,8 +29,10 @@ export class MCPSchemaManager {
         this.schemas.set(connectorName, schema);
       }
     }
-    this.activeInSession.add(connectorName);
+    // Set lastUsed AFTER the async fetch completes — prevents pruneInactive
+    // from racing and removing a connector that is mid-activation.
     this.lastUsed.set(connectorName, Date.now());
+    this.activeInSession.add(connectorName);
   }
 
   // Prune connectors inactive for longer than ttlMs (default: 10 minutes)
@@ -68,8 +70,8 @@ export class MCPSchemaManager {
       if (Array.isArray(schema)) {
         const found = schema.find(t => t.name === toolName);
         if (found) {
-          this.activeInSession.add(connectorName);
           this.lastUsed.set(connectorName, Date.now());
+          this.activeInSession.add(connectorName);
           return true;
         }
       }
@@ -89,8 +91,8 @@ export class MCPSchemaManager {
     const manifest = this.manifests.get(connectorName);
     if (!manifest) return null;
 
-    // In a real implementation, this would call the MCP server
-    // For now, return null — schemas are registered externally
+    // In a real implementation, this would call the MCP server.
+    // For now, return null — schemas are registered externally via registerSchema().
     return null;
   }
 

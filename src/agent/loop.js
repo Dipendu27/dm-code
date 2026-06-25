@@ -59,10 +59,10 @@ export class AgentLoop {
     this._compactTriggered = false;
     this._ollamaFallback   = false;
 
-    // Fix 4: MCP schema manager — lazy-load
+    // MCP schema manager — lazy-load
     this.mcpManager = new MCPSchemaManager();
 
-    // Fix 5: Session persistence
+    // Session persistence
     this.session = new SessionPersistence(sessionId);
 
     this._updateClient();
@@ -86,14 +86,14 @@ export class AgentLoop {
     this.turnCount++;
     let rounds = 0;
 
-    // Fix 4: Prune inactive MCP schemas at the start of each turn
+    // Prune inactive MCP schemas at the start of each turn
     this.mcpManager.pruneInactive();
 
     try {
       while (rounds < MAX_TOOL_ROUNDS) {
         rounds++;
 
-        // Fix 1: Check context budget and auto-compact if needed
+        // Check context budget and auto-compact if needed
         await this._checkContextBudget();
 
         // Show animated spinner while waiting for model response
@@ -135,11 +135,11 @@ export class AgentLoop {
           const toolInput = tc.input;
           const toolUseId = tc.id;
 
-          // Fix 3: Show diff preview before file writes/edits
+          // Show diff preview before file writes/edits
           if (this._isFileModification(toolName)) {
             const previewResult = await this._previewFileChange(toolName, toolInput);
             if (previewResult) {
-              const { approved, oldContent, newContent, filePath } = previewResult;
+              const { approved } = previewResult;
               if (!approved) {
                 toolResults.push({
                   type:        'tool_result',
@@ -147,7 +147,7 @@ export class AgentLoop {
                   content:     'User rejected this file change after reviewing diff.',
                   is_error:    true,
                 });
-                printWarning(`Rejected: ${toolName} on ${filePath}`);
+                printWarning(`Rejected: ${toolName} on ${previewResult.filePath}`);
                 continue;
               }
             }
@@ -155,20 +155,29 @@ export class AgentLoop {
 
           const needsConfirm = this._needsConfirmation(toolName, toolInput);
           if (needsConfirm && !this.autoApprove) {
-            const approved = await this._requestConfirmation(toolName, toolInput);
-            if (!approved) {
-              toolResults.push({
-                type:        'tool_result',
-                tool_use_id: toolUseId,
-                content:     'User rejected this operation.',
-                is_error:    true,
-              });
-              printWarning(`Rejected: ${toolName}`);
-              continue;
+            // Skip double-confirmation for file mutations already confirmed in _previewFileChange
+            const alreadyConfirmed = this._isFileModification(toolName);
+            if (!alreadyConfirmed) {
+              const approved = await this._requestConfirmation(toolName, toolInput);
+              if (!approved) {
+                toolResults.push({
+                  type:        'tool_result',
+                  tool_use_id: toolUseId,
+                  content:     'User rejected this operation.',
+                  is_error:    true,
+                });
+                printWarning(`Rejected: ${toolName}`);
+                continue;
+              }
             }
           }
 
           printToolCall(toolName, toolInput);
+
+          // Auto-backup before file mutations so /undo works
+          if (this._isFileModification(toolName)) {
+            await this._backupFile(toolName, toolInput);
+          }
 
           const { success, result, error, durationMs } =
             await this.executor.execute(toolName, toolInput);
@@ -223,11 +232,11 @@ export class AgentLoop {
       printTokenUsage(this.inputTokens, this.outputTokens);
     }
 
-    // Fix 2: Show context window usage bar
+    // Show context window usage bar
     const contextLimit = this.model?.contextTokens || 200_000;
     renderContextBar(this.inputTokens + this.outputTokens, contextLimit);
 
-    // Fix 5: Save session state to disk after every turn
+    // Save session state to disk after every turn
     this._saveSession();
 
     this.abortController = null;
@@ -244,42 +253,37 @@ export class AgentLoop {
       stopThinking();
       printWarning(`Rate limit on ${this.model.provider}. Trying fallback providers...`);
 
-      // Build fallback list: FALLBACK_ORDER minus the primary, minus providers with no key
       const fallbacks = FALLBACK_ORDER.filter(p => {
         if (p === this.model.provider) return false;
-        const key = getApiKey(p);
-        return !!key;
+        return !!getApiKey(p);
       });
 
       for (const fallbackProvider of fallbacks) {
+        const fallbackParams = this._buildFallbackParams(fallbackProvider);
+        if (!fallbackParams) continue;
+
         try {
           printInfo(`→ Trying ${fallbackProvider}...`);
-          const fallbackParams = this._buildFallbackParams(fallbackProvider);
-          if (!fallbackParams) continue;
 
-          // Temporarily switch client for this call
-          const origClient = this.client;
-          const origModel = this.model;
+          const origClient  = this.client;
+          const origModel   = this.model;
           const origModelId = this.modelId;
 
-          this.client = new ProviderClient(fallbackParams.modelId);
-          this.model = fallbackParams.model;
+          this.client  = new ProviderClient(fallbackParams.modelId);
+          this.model   = fallbackParams.model;
           this.modelId = fallbackParams.modelId;
 
           try {
             const result = await this._callModel();
             printInfo(`[Used ${fallbackProvider} as fallback — your default model is unchanged]`);
-            // Restore original client for next turn
-            this.client = origClient;
-            this.model = origModel;
+            this.client  = origClient;
+            this.model   = origModel;
             this.modelId = origModelId;
             return result;
           } catch (fallbackErr) {
-            // Restore original client
-            this.client = origClient;
-            this.model = origModel;
+            this.client  = origClient;
+            this.model   = origModel;
             this.modelId = origModelId;
-
             if (this._isRateLimitError(fallbackErr)) {
               printWarning(`${fallbackProvider} also rate-limited. Trying next...`);
               continue;
@@ -310,31 +314,26 @@ export class AgentLoop {
 
   // ── Build params for a fallback provider ─────────────────────────────────────
   _buildFallbackParams(provider) {
-    const fallbackModel = MODELS.find(m => m.provider === provider && m.recommended);
-    if (!fallbackModel) {
-      // If no recommended model, take the first for that provider
-      const anyModel = MODELS.find(m => m.provider === provider);
-      if (!anyModel) return null;
-      return { modelId: anyModel.id, model: anyModel };
-    }
-    return { modelId: fallbackModel.id, model: fallbackModel };
+    const recommended = MODELS.find(m => m.provider === provider && m.recommended);
+    const fallback    = recommended || MODELS.find(m => m.provider === provider);
+    if (!fallback) return null;
+    return { modelId: fallback.id, model: fallback };
   }
 
-  // ── Call Ollama directly ─────────────────────────────────────────────────────
+  // ── Call Ollama directly (uses ProviderClient's OpenAI-compatible path) ───────
   async _callOllama() {
-    const messages = this._buildMessages();
-
-    // Create a temporary Ollama-only client
+    // Build a temporary Ollama ProviderClient using the OpenAI-compatible endpoint.
+    // We reuse parseOpenAIStream so there's no duplicated fetch logic.
     const response = await fetch('http://localhost:11434/v1/chat/completions', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'mistral',
+        model:      'mistral',
         max_tokens: MAX_TOKENS,
-        stream: true,
+        stream:     true,
         messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
-          ...this._convertHistoryToOpenAI(messages),
+          ...convertToOpenAIMessages(this._buildMessages()),
         ],
       }),
     });
@@ -349,37 +348,33 @@ export class AgentLoop {
   // ── Check if error is a rate limit ──────────────────────────────────────────
   _isRateLimitError(err) {
     const status = err.status ?? err.statusCode ?? err.response?.status;
-    const msg = (err.message ?? '').toLowerCase();
-
+    const msg    = (err.message ?? '').toLowerCase();
     return (
       status === 429 ||
-      msg.includes('rate_limit') ||
-      msg.includes('rate limit') ||
-      msg.includes('quota') ||
+      msg.includes('rate_limit')        ||
+      msg.includes('rate limit')        ||
+      msg.includes('quota')             ||
       msg.includes('too many requests') ||
-      msg.includes('resource_exhausted') ||
+      msg.includes('resource_exhausted')||
       msg.includes('tokens per minute')
     );
   }
 
-  // ── Check context budget and auto-compact (Fix 1 & 2) ──────────────────────
+  // ── Check context budget and auto-compact ────────────────────────────────────
   async _checkContextBudget() {
     const contextLimit = this.model?.contextTokens || 200_000;
-    const used = this.inputTokens + this.outputTokens;
+    const used  = this.inputTokens + this.outputTokens;
     const ratio = used / contextLimit;
 
-    // Auto-compact at 70% (Fix 1) — aggressive compact to save budget
     if (ratio > AUTO_COMPACT_THRESHOLD && !this._compactTriggered) {
       this._compactTriggered = true;
       await this.compactHistory('auto: context usage exceeded 70%');
-    }
-    // Notify at 50% (Fix 2)
-    else if (ratio > COMPACT_THRESHOLD && this.history.length > 6) {
+    } else if (ratio > COMPACT_THRESHOLD && this.history.length > 6) {
       printInfo(`Context at ${Math.round(ratio * 100)}% — consider running /compact to free space.`);
     }
   }
 
-  // ── Compact history — summarize and condense (Fix 2) ─────────────────────────
+  // ── Compact history ───────────────────────────────────────────────────────────
   async compactHistory(reason = 'manual') {
     if (this.history.length < 4) {
       printWarning('Not enough history to compact.');
@@ -387,13 +382,10 @@ export class AgentLoop {
     }
 
     const beforeTokens = this.inputTokens + this.outputTokens;
+    const keepCount    = 4;
+    const toSummarize  = this.history.slice(0, -keepCount);
+    const toKeep       = this.history.slice(-keepCount);
 
-    // Keep the last 2 exchanges (4 messages) and summarize everything before
-    const keepCount = 4;
-    const toSummarize = this.history.slice(0, -keepCount);
-    const toKeep = this.history.slice(-keepCount);
-
-    // Build a compact summary of older messages
     const summaryParts = [];
     for (const msg of toSummarize) {
       if (msg.role === 'user' && typeof msg.content === 'string') {
@@ -413,14 +405,12 @@ export class AgentLoop {
       '--- END SUMMARY ---',
     ].join('\n');
 
-    // Replace history with summary + recent messages
     this.history = [
-      { role: 'user', content: compactedSummary },
+      { role: 'user',      content: compactedSummary },
       { role: 'assistant', content: 'Understood. I have the context from the compacted session summary. Ready to continue.' },
       ...toKeep,
     ];
 
-    // Estimate token savings (rough: ~4 chars per token)
     const estimatedSaved = toSummarize.reduce((acc, m) => {
       const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
       return acc + Math.floor(content.length / 4);
@@ -428,70 +418,100 @@ export class AgentLoop {
 
     const afterTokens = Math.max(0, beforeTokens - estimatedSaved);
     this._compactTriggered = false;
-
     printCompactNotice(reason, beforeTokens, afterTokens);
   }
 
-  // ── Fix 3: Preview file changes before writing ──────────────────────────────
+  // ── File modification helpers ────────────────────────────────────────────────
   _isFileModification(toolName) {
     return ['write_file', 'edit_file'].includes(toolName);
   }
 
+  // Auto-backup before file mutations so /undo can restore them
+  async _backupFile(toolName, toolInput) {
+    try {
+      const filePath = toolInput.path;
+      if (!filePath) return;
+      const current = await this.executor.readFile({ path: filePath }).catch(() => null);
+      if (current !== null) {
+        // Store last backup in memory so /undo can access it
+        if (!this._undoStack) this._undoStack = [];
+        this._undoStack.push({ path: filePath, content: current });
+        // Keep at most 10 undo entries
+        if (this._undoStack.length > 10) this._undoStack.shift();
+      }
+    } catch {
+      // Non-fatal — backup failure should never block the tool call
+    }
+  }
+
+  // Undo the last file write/edit by restoring backup
+  async undoLastEdit() {
+    if (!this._undoStack || this._undoStack.length === 0) {
+      printWarning('Nothing to undo — no file edits made in this session.');
+      return false;
+    }
+    const { path: filePath, content } = this._undoStack.pop();
+    try {
+      await this.executor.writeFile({ path: filePath, content });
+      printInfo(`Restored: ${filePath}`);
+      return true;
+    } catch (err) {
+      printError(`Undo failed: ${err.message}`);
+      return false;
+    }
+  }
+
+  // Preview diff for edit_file (full-file diff, not just snippet)
   async _previewFileChange(toolName, toolInput) {
     try {
       if (toolName === 'edit_file') {
-        // Read current file content for diff
         const { path: filePath, old_string, new_string } = toolInput;
         const currentContent = await this.executor.readFile({ path: filePath }).catch(() => '');
         if (currentContent && old_string) {
+          // Show diff of the FULL file (before vs after), not just the snippet
           const newContent = currentContent.replace(old_string, new_string);
-          printDiff(old_string, new_string, filePath);
-
-          // If not auto-approve, ask for confirmation here
+          printDiff(currentContent, newContent, filePath);
           if (!this.autoApprove) {
             const approved = await this._requestConfirmation('edit_file', toolInput);
-            return { approved, oldContent: old_string, newContent: new_string, filePath };
+            return { approved, filePath };
           }
-          return { approved: true, oldContent: old_string, newContent: new_string, filePath };
+          return { approved: true, filePath };
         }
       } else if (toolName === 'write_file') {
         const { path: filePath, content } = toolInput;
-        // Try to read existing file for diff
         const currentContent = await this.executor.readFile({ path: filePath }).catch(() => null);
         if (currentContent !== null) {
           printDiff(currentContent, content, filePath);
           if (!this.autoApprove) {
             const approved = await this._requestConfirmation('write_file', toolInput);
-            return { approved, oldContent: currentContent, newContent: content, filePath };
+            return { approved, filePath };
           }
-          return { approved: true, oldContent: currentContent, newContent: content, filePath };
+          return { approved: true, filePath };
         }
-        // New file — no diff to show
+        // New file — no existing content to diff, skip preview
       }
     } catch {
-      // If preview fails, allow the normal confirmation flow
+      // Preview failure is non-fatal — fall through to normal confirm flow
     }
     return null;
   }
 
-  // ── Call the model via the active provider (with retry) ──────────────────────
+  // ── Call the model via the active provider (with retry + exponential backoff) ─
   async _callModel() {
-    const messages = this._buildMessages();
-    const MAX_RETRIES = 5;  // Increased from 3 (Fix 5: better retry)
+    const messages    = this._buildMessages();
+    const MAX_RETRIES = 5;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        // Fix 4: Only include active MCP schemas
         const mcpSchemas = this.mcpManager.getActiveSchemas();
-        const allTools = [...TOOL_DEFINITIONS, ...mcpSchemas];
+        const allTools   = [...TOOL_DEFINITIONS, ...mcpSchemas];
 
         const { stream, adapter, fullResult } = await this.client.streamMessage({
           messages,
-          tools: allTools,
+          tools:  allTools,
           signal: this.abortController?.signal,
         });
 
-        // Route to the right streaming parser
         switch (adapter) {
           case 'anthropic': return await this._consumeAnthropicStream(stream);
           case 'openai':    return await this._consumeOpenAIStream(stream);
@@ -499,41 +519,41 @@ export class AgentLoop {
           default:          throw new Error(`Unknown adapter: ${adapter}`);
         }
       } catch (err) {
+        if (err.name === 'AbortError') return null;
+
         const isRetryable = this._isRetryableError(err);
         if (isRetryable && attempt < MAX_RETRIES) {
-          // Fix 5: Exponential backoff with jitter, capped at 30s
           const baseDelay = Math.pow(2, attempt) * 1000;
-          const jitter = Math.random() * 500;
-          const delay = Math.min(baseDelay + jitter, 30_000);
-          
-          // Show retry status in the spinner (updates in-place, no terminal clutter)
-          const retryMsg = `Connection dropped — retrying (${attempt + 1}/${MAX_RETRIES})…`;
-          setThinkingMessage(retryMsg);
-          startThinking(); // safe to call if already running (has guard)
+          const jitter    = Math.random() * 500;
+          const delay     = Math.min(baseDelay + jitter, 30_000);
 
+          setThinkingMessage(`Connection dropped — retrying (${attempt + 1}/${MAX_RETRIES})…`);
+          startThinking();
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
 
-        // Fix 9: Better error messages for rate limits vs server errors
+        // Better error messages for common failure modes
         if (/429|rate.?limit/i.test(err.message) || err.status === 429) {
-          printError(`Rate limit hit. Check your plan limits or try a different model.`);
-        } else if (/5\d{2}|server.?error/i.test(err.message) || (err.status >= 500)) {
-          printError(`Server error — check https://status.anthropic.com or provider status page.`);
+          printError('Rate limit hit. Check your plan limits or try a different model.');
+        } else if (err.status >= 500 || /5\d{2}|server.?error/i.test(err.message)) {
+          printError('Server error — check provider status page.');
         }
         throw err;
       }
     }
+
+    // Should never reach here — always throws or returns above
+    throw new Error('Max retries exceeded.');
   }
 
-  // ── Check if an error is transient and retryable ────────────────────────────
+  // ── Check if an error is transient and retryable ─────────────────────────────
   _isRetryableError(err) {
     const msg = err.message || '';
-    // Rate limits, server errors, network issues
-    if (/429|rate.?limit/i.test(msg)) return true;
-    if (/5\d{2}|502|503|504|server.?error/i.test(msg)) return true;
+    if (/429|rate.?limit/i.test(msg))                             return true;
+    if (/5\d{2}|502|503|504|server.?error/i.test(msg))           return true;
     if (/ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch.?failed|network/i.test(msg)) return true;
-    if (err.status >= 500) return true;
+    if (err.status >= 500)  return true;
     if (err.status === 429) return true;
     return false;
   }
@@ -602,10 +622,10 @@ export class AgentLoop {
 
   // ── OpenAI-compatible stream consumer (Groq + Mistral + Ollama) ──────────────
   async _consumeOpenAIStream(body) {
-    let textOutput  = '';
-    let toolCalls   = [];
-    let stopReason  = 'end_turn';
-    let firstText   = true;
+    let textOutput = '';
+    let toolCalls  = [];
+    let stopReason = 'end_turn';
+    let firstText  = true;
 
     for await (const event of parseOpenAIStream(body)) {
       if (this.abortController?.signal.aborted) return null;
@@ -629,10 +649,10 @@ export class AgentLoop {
 
   // ── Gemini stream consumer ───────────────────────────────────────────────────
   async _consumeGeminiStream(streamResult) {
-    let textOutput  = '';
-    let toolCalls   = [];
-    let stopReason  = 'end_turn';
-    let firstText   = true;
+    let textOutput = '';
+    let toolCalls  = [];
+    let stopReason = 'end_turn';
+    let firstText  = true;
 
     for await (const event of parseGeminiStream(streamResult)) {
       if (this.abortController?.signal.aborted) return null;
@@ -657,7 +677,7 @@ export class AgentLoop {
   // ── Build messages for API ───────────────────────────────────────────────────
   _buildMessages() {
     const messages = [...this.history];
-    // Inject CWD into first user message
+    // Inject CWD into first user message so the model always knows context
     if (messages.length > 0 && messages[0].role === 'user') {
       const first = messages[0];
       if (typeof first.content === 'string' && !first.content.startsWith('CWD:')) {
@@ -677,19 +697,11 @@ export class AgentLoop {
     return content;
   }
 
-  // ── Convert history to OpenAI format (for Ollama fallback) ──────────────────
-  _convertHistoryToOpenAI(messages) {
-    return convertToOpenAIMessages(messages);
-  }
-
   // ── Confirmation logic ───────────────────────────────────────────────────────
   _needsConfirmation(toolName, params) {
-    // File mutations always need confirmation
     if (['write_file', 'edit_file', 'delete_file', 'move_file'].includes(toolName)) return true;
-    // Commands: safe read-only commands skip confirmation, everything else requires it
     if (toolName === 'run_command') {
-      const cmd = params?.command || '';
-      return !isSafeCommand(cmd);
+      return !isSafeCommand(params?.command || '');
     }
     return false;
   }
@@ -699,28 +711,28 @@ export class AgentLoop {
     return true;
   }
 
-  // ── Fix 5: Save session state to disk ───────────────────────────────────────
+  // ── Save session state to disk ───────────────────────────────────────────────
   _saveSession() {
     try {
       this.session.save({
-        cwd: this.cwd,
-        modelId: this.modelId,
-        history: this.history,
-        memory: this.memoryRef,
-        inputTokens: this.inputTokens,
+        cwd:          this.cwd,
+        modelId:      this.modelId,
+        history:      this.history,
+        memory:       this.memoryRef,
+        inputTokens:  this.inputTokens,
         outputTokens: this.outputTokens,
-        status: 'active',
+        status:       'active',
       });
     } catch { /* don't break session on save failure */ }
   }
 
-  // ── Fix 5: Restore session from disk ─────────────────────────────────────────
+  // ── Restore session from disk ─────────────────────────────────────────────────
   async restoreSession(sessionId) {
     const data = SessionPersistence.restoreById(sessionId);
     if (!data) return false;
 
-    this.history      = data.history || [];
-    this.inputTokens  = data.inputTokens || 0;
+    this.history      = data.history      || [];
+    this.inputTokens  = data.inputTokens  || 0;
     this.outputTokens = data.outputTokens || 0;
     this.turnCount    = Math.floor(this.history.length / 2);
 
@@ -733,17 +745,10 @@ export class AgentLoop {
   }
 
   // ── Public API ───────────────────────────────────────────────────────────────
-  abort()          { this.abortController?.abort(); }
-  resetHistory()   { this.history = []; this.inputTokens = 0; this.outputTokens = 0; this.turnCount = 0; this._compactTriggered = false; }
+  abort()           { this.abortController?.abort(); }
+  resetHistory()    { this.history = []; this.inputTokens = 0; this.outputTokens = 0; this.turnCount = 0; this._compactTriggered = false; this._undoStack = []; }
   setAutoApprove(v) { this.autoApprove = v; }
 
-  // Mark session as completed on clean exit
-  markSessionCompleted() {
-    this.session.markCompleted();
-  }
-
-  // Get session ID for display
-  getSessionId() {
-    return this.session.sessionId;
-  }
+  markSessionCompleted() { this.session.markCompleted(); }
+  getSessionId()         { return this.session.sessionId; }
 }

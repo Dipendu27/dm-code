@@ -178,32 +178,30 @@ export const TOOL_DEFINITIONS = [
   },
 ];
 
-// ─── Dangerous commands that ALWAYS require confirmation ──────────────────────
+// ─── Dangerous commands that always require confirmation ──────────────────────
 export const DANGEROUS_PATTERNS = [
   /rm\s+-rf/,
-  /rm\s+-r/,
+  /rm\s+-r\b/,
   /rmdir/,
-  /del\s+/i,           // Windows delete
-  /rd\s+\/s/i,         // Windows recursive delete
+  /\bdel\s+.*\/[sqf]/i,       // Windows del with force/quiet flags
+  /rd\s+\/s/i,                 // Windows recursive delete
   />\/dev\/(s?d[a-z])/,
   /mkfs/,
   /dd\s+if=/,
   /chmod\s+777/,
-  /sudo\s+/,
-  /doas\s+/,
-  /pkexec\s+/,
-  /su\s+-c/,
-  /:\(\)\s*\{/,        // fork bomb
-  /curl.*\|\s*(ba)?sh/,
-  /wget.*\|\s*(ba)?sh/,
-  /powershell.*-enc/i, // encoded PowerShell (obfuscation)
-  /`/,                 // backtick command substitution
-  /\$\(/,              // subshell execution
-  /\|\s*(ba)?sh/,      // pipe to shell
-  /eval\s+/,
-  /format\s+[a-z]:/i,  // Windows format drive
-  /shutdown/i,
-  /reboot/i,
+  /\bsudo\b/,
+  /\bdoas\b/,
+  /\bpkexec\b/,
+  /\bsu\s+-c\b/,
+  /:\(\)\s*\{.*\}/,            // fork bomb (requires full pattern)
+  /curl[^|]+\|\s*(ba)?sh/,     // curl | sh — only block pipe-to-shell
+  /wget[^|]+\|\s*(ba)?sh/,     // wget | sh
+  /powershell[^;]*-e(nc)?\b/i, // encoded PowerShell
+  /\|\s*(ba)?sh\b/,            // pipe to any shell
+  /\beval\s+/,
+  /format\s+[a-z]:/i,          // Windows format drive
+  /\bshutdown\b/i,
+  /\breboot\b/i,
 ];
 
 // Commands considered safe (read-only / informational) — skip confirmation
@@ -229,9 +227,9 @@ export function isSafeCommand(command) {
 // ─── Tool Executor ────────────────────────────────────────────────────────────
 export class ToolExecutor {
   constructor({ cwd, memory, onConfirm }) {
-    this.cwd      = cwd || process.cwd();
-    this.memory   = memory || {};
-    this.onConfirm = onConfirm; // async (action, details) => boolean
+    this.cwd       = cwd || process.cwd();
+    this.memory    = memory || {};
+    this.onConfirm = onConfirm;
   }
 
   async execute(toolName, params) {
@@ -264,7 +262,7 @@ export class ToolExecutor {
 
   // ── read_file ──────────────────────────────────────────────────────────────
   async readFile({ path: filePath, start_line, end_line }) {
-    const abs = resolvePath(filePath, this.cwd);
+    const abs  = resolvePath(filePath, this.cwd);
     const stat = await fs.stat(abs);
 
     if (stat.size > 2 * 1024 * 1024) {
@@ -298,7 +296,7 @@ export class ToolExecutor {
 
   // ── edit_file ──────────────────────────────────────────────────────────────
   async editFile({ path: filePath, old_string, new_string }) {
-    const abs = resolvePath(filePath, this.cwd);
+    const abs      = resolvePath(filePath, this.cwd);
     const original = await fs.readFile(abs, 'utf-8');
 
     if (!original.includes(old_string)) {
@@ -308,7 +306,7 @@ export class ToolExecutor {
       );
     }
 
-    const count = (original.split(old_string).length - 1);
+    const count = original.split(old_string).length - 1;
     if (count > 1) {
       throw new Error(
         `old_string matches ${count} locations in ${filePath}. ` +
@@ -327,35 +325,32 @@ export class ToolExecutor {
 
   // ── run_command ────────────────────────────────────────────────────────────
   async runCommand({ command, cwd: cmdCwd, timeout = 30_000 }) {
-    const workDir = cmdCwd ? resolvePath(cmdCwd, this.cwd) : this.cwd;
-
-    // Cap timeout at 120 seconds — AI cannot override this
+    const workDir     = cmdCwd ? resolvePath(cmdCwd, this.cwd) : this.cwd;
     const safeTimeout = Math.min(Math.max(timeout, 1000), 120_000);
 
-    // Block outright dangerous commands
     if (isDangerous(command)) {
       throw new Error(
         `Command blocked: "${command}" matches a dangerous pattern. ` +
-        `Use a more specific command if you're sure this is safe.`
+        `Use a more specific command if you are sure this is safe.`
       );
     }
 
     try {
       const result = await execaCommand(command, {
-        cwd: workDir,
-        shell: true,
+        cwd:     workDir,
+        shell:   true,
         timeout: safeTimeout,
-        reject: false,
-        all: true,
+        reject:  false,
+        all:     true,
       });
 
-      const output = result.all || result.stdout || '';
+      const output = result.all    || result.stdout || '';
       const errOut = result.stderr || '';
       const code   = result.exitCode ?? 0;
 
       return {
-        stdout: output.slice(0, 50_000),
-        stderr: errOut.slice(0, 10_000),
+        stdout:   output.slice(0, 50_000),
+        stderr:   errOut.slice(0, 10_000),
         exitCode: code,
         combined: `${output}${errOut ? '\nSTDERR:\n' + errOut : ''}`.trim().slice(0, 60_000),
       };
@@ -366,40 +361,36 @@ export class ToolExecutor {
 
   // ── list_files ─────────────────────────────────────────────────────────────
   async listFiles({ path: dirPath = '.', recursive = false, pattern, depth = 3 }) {
-    const abs = resolvePath(dirPath, this.cwd);
-
+    const abs         = resolvePath(dirPath, this.cwd);
     const globPattern = pattern || (recursive ? '**/*' : '*');
     const maxDepth    = recursive ? depth : 1;
 
     const files = await glob(globPattern, {
-      cwd: abs,
+      cwd:      abs,
       maxDepth,
-      dot: false,
-      ignore: ['**/node_modules/**', '**/.git/**', '**/__pycache__/**', '**/dist/**', '**/.DS_Store'],
+      dot:      false,
+      ignore:   ['**/node_modules/**', '**/.git/**', '**/__pycache__/**', '**/dist/**', '**/.DS_Store'],
     });
 
     files.sort();
-    return files.length > 0
-      ? files.join('\n')
-      : '(empty directory)';
+    return files.length > 0 ? files.join('\n') : '(empty directory)';
   }
 
   // ── search_files ───────────────────────────────────────────────────────────
   async searchFiles({ pattern, path: searchPath = '.', glob: globPat = '**/*', case_insensitive = false, max_results = 50 }) {
-    const abs    = resolvePath(searchPath, this.cwd);
-    const flags  = case_insensitive ? 'gi' : 'g';
+    const abs   = resolvePath(searchPath, this.cwd);
+    const flags = case_insensitive ? 'gi' : 'g';
     let regex;
     try {
       regex = new RegExp(pattern, flags);
     } catch {
-      // Invalid regex — fall back to literal string match
       regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
     }
 
     const files = await glob(globPat, {
-      cwd: abs,
+      cwd:      abs,
       maxDepth: 10,
-      ignore: ['**/node_modules/**', '**/.git/**', '**/__pycache__/**', '**/dist/**'],
+      ignore:   ['**/node_modules/**', '**/.git/**', '**/__pycache__/**', '**/dist/**'],
     });
 
     const results = [];
@@ -424,9 +415,7 @@ export class ToolExecutor {
       } catch { /* skip unreadable files */ }
     }
 
-    return results.length > 0
-      ? results.join('\n')
-      : `No matches found for "${pattern}"`;
+    return results.length > 0 ? results.join('\n') : `No matches found for "${pattern}"`;
   }
 
   // ── create_directory ───────────────────────────────────────────────────────
@@ -454,10 +443,9 @@ export class ToolExecutor {
 
   // ── web_fetch ──────────────────────────────────────────────────────────────
   async webFetch({ url, format = 'text' }) {
-    // Use native fetch (Node ≥ 20)
     const res = await fetch(url, {
       headers: { 'User-Agent': 'DM-Code/1.0 (coding assistant)' },
-      signal: AbortSignal.timeout(15_000),
+      signal:  AbortSignal.timeout(15_000),
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -469,22 +457,39 @@ export class ToolExecutor {
       catch { return text.slice(0, 50_000); }
     }
 
-    // Strip HTML tags for readability
-    return text
+    // Improved HTML → readable text conversion
+    const readable = text
+      // Remove script and style blocks entirely
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s{2,}/g, ' ')
+      .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+      // Convert common block elements to newlines
+      .replace(/<\/?(p|div|section|article|header|footer|main|nav|aside|h[1-6]|li|tr|br)[^>]*>/gi, '\n')
+      // Convert links: keep the text + URL
+      .replace(/<a[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 [$1]')
+      // Strip remaining tags
+      .replace(/<[^>]+>/g, '')
+      // Decode common HTML entities
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&[a-z]+;/gi, '')
+      // Collapse excessive whitespace
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
       .trim()
       .slice(0, 50_000);
+
+    return readable;
   }
 
   // ── memory_read ────────────────────────────────────────────────────────────
   async memoryRead({ key }) {
     const val = this.memory[key];
-    return val !== undefined
-      ? String(val)
-      : `(no memory stored for key: ${key})`;
+    return val !== undefined ? String(val) : `(no memory stored for key: ${key})`;
   }
 
   // ── memory_write ───────────────────────────────────────────────────────────
@@ -494,19 +499,19 @@ export class ToolExecutor {
   }
 }
 
-// ─── Path resolver with sandboxing ─────────────────────────────────────────────
+// ─── Path resolver with sandbox enforcement ───────────────────────────────────
 function resolvePath(filePath, cwd) {
   const resolved = path.isAbsolute(filePath)
     ? path.resolve(filePath)
     : path.resolve(cwd, filePath);
 
-  // Security: ensure resolved path stays within the CWD or its children
-  const normalizedCwd = path.resolve(cwd) + path.sep;
+  const normalizedCwd      = path.resolve(cwd) + path.sep;
   const normalizedResolved = path.resolve(resolved);
 
-  // Allow exact CWD match or anything under it
-  if (normalizedResolved !== path.resolve(cwd) &&
-      !normalizedResolved.startsWith(normalizedCwd)) {
+  if (
+    normalizedResolved !== path.resolve(cwd) &&
+    !normalizedResolved.startsWith(normalizedCwd)
+  ) {
     throw new Error(
       `Path traversal blocked: "${filePath}" resolves outside the working directory.\n` +
       `  Resolved: ${normalizedResolved}\n` +

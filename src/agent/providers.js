@@ -14,7 +14,7 @@ const REQUEST_TIMEOUT_MS = 60_000; // 60s timeout per API call
 
 export class ProviderClient {
   constructor(modelId) {
-    this.model = getModelById(modelId);
+    this.model  = getModelById(modelId);
     this.apiKey = getApiKey(this.model.provider);
   }
 
@@ -46,24 +46,27 @@ export class ProviderClient {
     }
     const client = _clientCache[cacheKey];
 
-    // Fix 6.1: Add prompt caching
+    // Prompt caching — cache the system prompt and recent user messages
     const system = [
       {
         type: 'text',
         text: ANNIHILATOR_SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral' }
-      }
+        cache_control: { type: 'ephemeral' },
+      },
     ];
 
     const cachedMessages = messages.map((m, idx) => {
-      // Add cache_control to the last 2 user messages
+      // Add cache_control to the last 2 user messages for prompt caching
       if (m.role === 'user' && idx >= messages.length - 2) {
         if (typeof m.content === 'string') {
           return { ...m, content: [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }] };
         } else if (Array.isArray(m.content)) {
           const newContent = [...m.content];
           if (newContent.length > 0) {
-            newContent[newContent.length - 1] = { ...newContent[newContent.length - 1], cache_control: { type: 'ephemeral' } };
+            newContent[newContent.length - 1] = {
+              ...newContent[newContent.length - 1],
+              cache_control: { type: 'ephemeral' },
+            };
           }
           return { ...m, content: newContent };
         }
@@ -88,9 +91,9 @@ export class ProviderClient {
     const client = new GoogleGenerativeAI(this.apiKey);
 
     const geminiModel = client.getGenerativeModel({
-      model: this.model.id,
+      model:             this.model.id,
       systemInstruction: ANNIHILATOR_SYSTEM_PROMPT,
-      generationConfig: { maxOutputTokens: MAX_TOKENS },
+      generationConfig:  { maxOutputTokens: MAX_TOKENS },
     });
 
     // Convert Anthropic-format tools → Gemini function declarations
@@ -100,21 +103,35 @@ export class ProviderClient {
       parameters:  t.input_schema,
     }));
 
-    // Convert Anthropic-format messages → Gemini format
-    const history   = [];
-    const lastUser  = [];
+    // Bug fix: Gemini's functionResponse requires the actual function NAME,
+    // not the opaque tool_use_id that Anthropic assigns.
+    // Build a lookup table from id → name by scanning assistant messages first.
+    const toolUseIdToName = new Map();
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        for (const c of msg.content) {
+          if (c.type === 'tool_use') {
+            toolUseIdToName.set(c.id, c.name);
+          }
+        }
+      }
+    }
+
+    // Convert Anthropic-format messages → Gemini history format
+    const history = [];
 
     for (const msg of messages) {
       if (msg.role === 'user') {
         if (typeof msg.content === 'string') {
           history.push({ role: 'user', parts: [{ text: msg.content }] });
         } else if (Array.isArray(msg.content)) {
-          // Tool results
+          // Tool results — resolve function name from lookup (not tool_use_id)
           const parts = msg.content.map(c => {
             if (c.type === 'tool_result') {
+              const fnName = toolUseIdToName.get(c.tool_use_id) || c.tool_use_id;
               return {
                 functionResponse: {
-                  name:     c.tool_use_id,
+                  name:     fnName,
                   response: { output: c.content },
                 },
               };
@@ -129,55 +146,46 @@ export class ProviderClient {
         } else if (Array.isArray(msg.content)) {
           const parts = [];
           for (const c of msg.content) {
-            if (c.type === 'text') parts.push({ text: c.text });
-            if (c.type === 'tool_use') {
-              parts.push({ functionCall: { name: c.name, args: c.input } });
-            }
+            if (c.type === 'text')     parts.push({ text: c.text });
+            if (c.type === 'tool_use') parts.push({ functionCall: { name: c.name, args: c.input } });
           }
           history.push({ role: 'model', parts });
         }
       }
     }
 
-    const lastMsg = history.pop();
-    const chat = geminiModel.startChat({
+    const lastMsg  = history.pop();
+    const chat     = geminiModel.startChat({
       history,
-      tools: functionDeclarations.length > 0
-        ? [{ functionDeclarations }]
-        : undefined,
+      tools: functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined,
     });
 
     const lastText = lastMsg?.parts?.[0]?.text || '';
-    const result = await chat.sendMessageStream(lastText);
+    const result   = await chat.sendMessageStream(lastText);
 
     return { stream: result.stream, adapter: 'google', fullResult: result };
   }
 
   // ── Groq (OpenAI-compatible API, streaming) ───────────────────────────────
   async _streamGroq(messages, tools, signal) {
-    // Groq uses OpenAI-compatible format
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
+      method:  'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type':  'application/json',
       },
       signal: signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
-        model:       this.model.id,
-        max_tokens:  MAX_TOKENS,
-        stream:      true,
-        messages:    [
+        model:      this.model.id,
+        max_tokens: MAX_TOKENS,
+        stream:     true,
+        messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
           ...convertToOpenAIMessages(messages),
         ],
         tools: tools.map(t => ({
           type:     'function',
-          function: {
-            name:        t.name,
-            description: t.description,
-            parameters:  t.input_schema,
-          },
+          function: { name: t.name, description: t.description, parameters: t.input_schema },
         })),
         tool_choice: 'auto',
       }),
@@ -194,7 +202,7 @@ export class ProviderClient {
   // ── Mistral (OpenAI-compatible API, streaming) ────────────────────────────
   async _streamMistral(messages, tools, signal) {
     const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
-      method: 'POST',
+      method:  'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type':  'application/json',
@@ -204,17 +212,13 @@ export class ProviderClient {
         model:      this.model.id,
         max_tokens: MAX_TOKENS,
         stream:     true,
-        messages:   [
+        messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
           ...convertToOpenAIMessages(messages),
         ],
         tools: tools.map(t => ({
           type:     'function',
-          function: {
-            name:        t.name,
-            description: t.description,
-            parameters:  t.input_schema,
-          },
+          function: { name: t.name, description: t.description, parameters: t.input_schema },
         })),
         tool_choice: 'auto',
       }),
@@ -228,29 +232,24 @@ export class ProviderClient {
     return { stream: response.body, adapter: 'openai' };
   }
 
-  // ── Ollama Local Fallback (OpenAI-compatible, Fix 1) ──────────────────────
+  // ── Ollama Local Fallback (OpenAI-compatible) ─────────────────────────────
   async _streamOllama(messages, tools, signal, model = 'mistral') {
     const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS * 2),  // longer timeout for local
+      signal:  signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS * 2), // longer for local
       body: JSON.stringify({
         model,
         max_tokens: MAX_TOKENS,
-        stream: true,
+        stream:     true,
         messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
           ...convertToOpenAIMessages(messages),
         ],
-        // Ollama supports tools but many models don't — include only if supported
         ...(tools.length > 0 ? {
           tools: tools.map(t => ({
-            type: 'function',
-            function: {
-              name:        t.name,
-              description: t.description,
-              parameters:  t.input_schema,
-            },
+            type:     'function',
+            function: { name: t.name, description: t.description, parameters: t.input_schema },
           })),
           tool_choice: 'auto',
         } : {}),
@@ -266,12 +265,10 @@ export class ProviderClient {
   }
 }
 
-// ── Check if Ollama is available locally ───────────────────────────────────────
+// ── Check if Ollama is available locally ─────────────────────────────────────
 export async function isOllamaAvailable() {
   try {
-    const res = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
-      signal: AbortSignal.timeout(2000),
-    });
+    const res = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { signal: AbortSignal.timeout(2000) });
     return res.ok;
   } catch {
     return false;
@@ -287,7 +284,6 @@ export function convertToOpenAIMessages(messages) {
       if (typeof msg.content === 'string') {
         out.push({ role: 'user', content: msg.content });
       } else if (Array.isArray(msg.content)) {
-        // Tool results
         for (const c of msg.content) {
           if (c.type === 'tool_result') {
             out.push({
@@ -312,7 +308,7 @@ export function convertToOpenAIMessages(messages) {
           }));
 
         const entry = { role: 'assistant' };
-        if (textParts) entry.content = textParts;
+        if (textParts)          entry.content    = textParts;
         if (toolCalls.length > 0) entry.tool_calls = toolCalls;
         out.push(entry);
       }
@@ -322,13 +318,13 @@ export function convertToOpenAIMessages(messages) {
   return out;
 }
 
-// ─── Parse a streaming OpenAI SSE response into our standard shape ────────────
+// ─── Parse a streaming OpenAI SSE response ────────────────────────────────────
 export async function* parseOpenAIStream(body) {
-  const decoder = new TextDecoder();
-  let buffer    = '';
-  let textOutput   = '';
-  const toolCalls  = {};  // id → { id, name, arguments }
-  let stopReason   = 'end_turn';
+  const decoder   = new TextDecoder();
+  let buffer      = '';
+  let textOutput  = '';
+  const toolCalls = {};  // index → { id, name, arguments }
+  let stopReason  = 'end_turn';
 
   for await (const chunk of body) {
     buffer += decoder.decode(chunk, { stream: true });
@@ -347,22 +343,20 @@ export async function* parseOpenAIStream(body) {
 
       const delta = choice.delta || {};
 
-      // Text chunk
       if (delta.content) {
         textOutput += delta.content;
         yield { type: 'text', text: delta.content };
       }
 
-      // Tool call chunks
       if (delta.tool_calls) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index ?? 0;
           if (!toolCalls[idx]) {
             toolCalls[idx] = { id: tc.id || `tool_${idx}`, name: '', arguments: '' };
           }
-          if (tc.id)                toolCalls[idx].id = tc.id;
-          if (tc.function?.name)    toolCalls[idx].name += tc.function.name;
-          if (tc.function?.arguments) toolCalls[idx].arguments += tc.function.arguments;
+          if (tc.id)                    toolCalls[idx].id = tc.id;
+          if (tc.function?.name)        toolCalls[idx].name      += tc.function.name;
+          if (tc.function?.arguments)   toolCalls[idx].arguments += tc.function.arguments;
         }
       }
 
@@ -372,7 +366,6 @@ export async function* parseOpenAIStream(body) {
     }
   }
 
-  // Emit completed tool calls
   const resolvedToolCalls = Object.values(toolCalls).map(tc => {
     let input = {};
     try { input = JSON.parse(tc.arguments || '{}'); } catch {}

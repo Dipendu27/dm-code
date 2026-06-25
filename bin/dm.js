@@ -12,7 +12,7 @@ import {
   TOOL_NAME, TOOL_VERSION, MODEL_DISPLAY,
   MODELS, getModelById,
 } from '../src/config/constants.js';
-import { printError, printSuccess, printInfo, printWelcome, printSessionList } from '../src/ui/renderer.js';
+import { printError, printSuccess, printInfo, printWarning, printSessionList } from '../src/ui/renderer.js';
 import { showModelPicker, providerBadge } from '../src/ui/model-picker.js';
 import { SessionPersistence } from '../src/agent/session.js';
 import chalk from 'chalk';
@@ -25,15 +25,22 @@ program
 // ── Default: interactive REPL ─────────────────────────────────────────────────
 program
   .argument('[prompt]', 'Run a single prompt non-interactively')
-  .option('-d, --cwd <dir>',   'Set working directory', process.cwd())
-  .option('--auto-approve',    'Auto-approve all tool calls')
-  .option('--verbose',         'Verbose tool output')
-  .option('--model <id>',      'Override model for this session')
-  .option('--resume [id]',     'Resume a previous session (optionally by ID)')
+  .option('-d, --cwd <dir>',    'Set working directory', process.cwd())
+  .option('-p, --print <text>', 'Run a single prompt and print output (alias for positional prompt)')
+  .option('--auto-approve',     'Auto-approve all tool calls')
+  .option('--verbose',          'Verbose tool output')
+  .option('--model <id>',       'Override model for this session')
+  .option('--resume [id]',      'Resume a previous session (optionally by ID)')
   .action(async (prompt, opts) => {
+    // --print / -p is an alias for the positional prompt argument
+    const userPrompt = prompt || opts.print || null;
+
     // CLI model override
     if (opts.model) {
-      const found = MODELS.find(m => m.id === opts.model || m.displayName.toLowerCase().includes(opts.model.toLowerCase()));
+      const found = MODELS.find(
+        m => m.id === opts.model ||
+             m.displayName.toLowerCase().includes(opts.model.toLowerCase())
+      );
       if (!found) {
         printError(`Unknown model: ${opts.model}`);
         console.log(chalk.dim('  Run: dmcode models'));
@@ -42,12 +49,11 @@ program
       setSelectedModelId(found.id);
     }
 
-    // Fix 5: --resume flag
+    // --resume flag
     if (opts.resume !== undefined) {
       let sessionId = typeof opts.resume === 'string' ? opts.resume : null;
 
       if (!sessionId) {
-        // Show session picker
         const sessions = await SessionPersistence.listSessions();
         if (sessions.length === 0) {
           printInfo('No saved sessions to resume.');
@@ -55,7 +61,7 @@ program
         }
         printSessionList(sessions);
 
-        // Auto-pick the most recent crashed session if available
+        // Auto-pick most recent crashed session, otherwise most recent
         const crashed = sessions.filter(s => s.status === 'active');
         if (crashed.length > 0) {
           sessionId = crashed[0].id;
@@ -76,12 +82,17 @@ program
       return;
     }
 
-    if (prompt) {
-      await runSinglePrompt(prompt, { cwd: opts.cwd, autoApprove: opts.autoApprove || false, verbose: opts.verbose });
+    // Single-prompt non-interactive mode
+    if (userPrompt) {
+      await runSinglePrompt(userPrompt, {
+        cwd:         opts.cwd,
+        autoApprove: opts.autoApprove || false,
+        verbose:     opts.verbose     || false,
+      });
       return;
     }
 
-    // Fix 5: Check for crashed sessions on startup
+    // Check for crashed sessions on startup
     const crashed = await SessionPersistence.findCrashedSessions();
     if (crashed.length > 0) {
       console.log();
@@ -102,7 +113,10 @@ program
   .description('List all available free models')
   .action(() => {
     const current = getSelectedModelId();
-    const TIER = { FREE: chalk.green.bold('FREE'), FREE_QUOTA: chalk.yellow.bold('FREE*') };
+    const TIER = {
+      FREE:       chalk.green.bold('FREE'),
+      FREE_QUOTA: chalk.yellow.bold('FREE*'),
+    };
     console.log();
     console.log(chalk.bold('  Annihilator Engine Options'));
     console.log(chalk.dim('  ' + '─'.repeat(72)));
@@ -146,9 +160,9 @@ program
 program
   .command('keys')
   .description('Manage API keys for all providers')
-  .argument('[action]', 'list | set | clear')
+  .argument('[action]',   'list | set | clear')
   .argument('[provider]', 'anthropic | google | groq | mistral')
-  .argument('[key]', 'Your API key')
+  .argument('[key]',      'Your API key')
   .action((action, provider, key) => {
     const providers = ['anthropic', 'google', 'groq', 'mistral'];
 
@@ -191,8 +205,8 @@ program
   .command('config')
   .description('View or set configuration')
   .argument('[action]', 'get | set | reset')
-  .argument('[key]', 'Config key')
-  .argument('[value]', 'Config value')
+  .argument('[key]',    'Config key')
+  .argument('[value]',  'Config value')
   .action((action, key, value) => {
     if (!action) {
       const cfg = getAllConfig();
@@ -203,7 +217,11 @@ program
       console.log();
       return;
     }
-    if (action === 'set' && key) { setConfig(key, value); printSuccess(`Set ${key} = ${value}`); return; }
+    if (action === 'set' && key) {
+      setConfig(key, value);
+      printSuccess(`Set ${key} = ${value}`);
+      return;
+    }
   });
 
 // ── dm setup — guided first-time setup ───────────────────────────────────────
@@ -214,6 +232,41 @@ program
     await showModelPicker({ title: 'DM Code Setup — Choose your Annihilator engine', showApiSetup: true });
     console.log();
     printSuccess('Setup complete! Run dm to start coding.');
+    console.log();
+    process.exit(0);
+  });
+
+// ── dm update — check for a newer version on npm ─────────────────────────────
+program
+  .command('update')
+  .description('Check for a newer version of DM Code on npm')
+  .action(async () => {
+    console.log();
+    printInfo('Checking npm for the latest version…');
+    try {
+      const res = await fetch('https://registry.npmjs.org/dm-code/latest', {
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) throw new Error(`npm registry returned ${res.status}`);
+      const data  = await res.json();
+      const latest = data.version;
+
+      if (latest === TOOL_VERSION) {
+        printSuccess(`You are on the latest version: v${TOOL_VERSION}`);
+      } else {
+        console.log();
+        console.log(chalk.bold.hex('#CC785C')(`  ⬆  Update available: v${TOOL_VERSION} → v${latest}`));
+        console.log();
+        console.log(chalk.dim('  To update, run one of:'));
+        console.log(chalk.cyan('    npm install -g dm-code'));
+        console.log(chalk.cyan('    npm install -g git+https://github.com/Dipendu27/dm-code.git'));
+        console.log();
+        console.log(chalk.dim(`  Changelog: https://github.com/Dipendu27/dm-code/blob/main/CHANGELOG.md`));
+      }
+    } catch (err) {
+      printWarning(`Could not reach npm registry: ${err.message}`);
+      console.log(chalk.dim('  Check manually: https://www.npmjs.com/package/dm-code'));
+    }
     console.log();
     process.exit(0);
   });
@@ -234,6 +287,7 @@ program
     console.log(chalk.dim(`  Node:     ${process.version}`));
     console.log(chalk.dim(`  Arch:     ${process.arch}`));
     console.log(chalk.dim(`  OS:       ${process.platform}`));
+    console.log(chalk.dim(`  Update:   dmcode update`));
     console.log();
   });
 
@@ -255,10 +309,12 @@ async function runSinglePrompt(prompt, { cwd, autoApprove, verbose }) {
     verbose,
     memoryRef: {},
     onConfirm: async (toolName, params) => {
-      // In single-prompt mode, show a minimal confirmation for non-safe commands
       const { isSafeCommand } = await import('../src/tools/executor.js');
       if (toolName === 'run_command' && isSafeCommand(params?.command || '')) return true;
-      console.log(chalk.yellow(`\n  ⚠ Auto-approving: ${toolName}`) + chalk.dim(` (${(params?.command || params?.path || '').slice(0, 60)})`));
+      console.log(
+        chalk.yellow(`\n  ⚠ Auto-approving: ${toolName}`) +
+        chalk.dim(` (${(params?.command || params?.path || '').slice(0, 60)})`)
+      );
       return true;
     },
   });

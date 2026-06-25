@@ -62,7 +62,11 @@ export class REPL {
 
     this._initAgent();
 
-    // Fix 5: Resume session if requested
+    // Show session ID so user can /resume it later
+    printInfo(`Session ID: ${chalk.bold(this.agent.getSessionId())}  (use /resume <id> to restore)`);
+    console.log();
+
+    // Resume session if requested
     if (this.resumeSessionId) {
       const restored = await this.agent.restoreSession(this.resumeSessionId);
       if (restored) {
@@ -70,7 +74,7 @@ export class REPL {
       }
     }
 
-    // Fix 5: Clean up old sessions on startup
+    // Clean up old sessions on startup (async, non-blocking)
     SessionPersistence.cleanupOldSessions(30).catch(() => {});
 
     this.input.start({
@@ -96,7 +100,7 @@ export class REPL {
     // Reset pending-exit flag on any new input
     this._pendingExit = false;
 
-    // Intercept bare "exit" / "quit" without the slash prefix
+    // Bare exit / quit without slash
     const lower = line.toLowerCase();
     if (lower === 'exit' || lower === 'quit' || lower === 'q') {
       this._exit();
@@ -206,6 +210,14 @@ export class REPL {
         await this._handleSave(arg || null);
         break;
 
+      case 'undo':
+        await this._handleUndo();
+        break;
+
+      case 'session':
+        printInfo(`Session ID: ${chalk.bold(this.agent?.getSessionId() || 'none')}`);
+        break;
+
       case 'exit': case 'quit': case 'q':
         this._exit();
         break;
@@ -215,12 +227,11 @@ export class REPL {
     }
   }
 
-  // ── /model — interactive model switcher ──────────────────────────────────────
+  // ── /model ────────────────────────────────────────────────────────────────
   async _switchModel() {
     this.input.pause();
     try {
       const chosen = await inlineModelSwitcher(this.input);
-      // Re-init agent with new model (it reads getSelectedModelId() internally)
       this._initAgent();
       console.log();
       printSuccess(`Engine switched to ${chalk.bold(chosen.displayName)}.`);
@@ -230,7 +241,7 @@ export class REPL {
     }
   }
 
-  // ── /models — quick list ──────────────────────────────────────────────────────
+  // ── /models ───────────────────────────────────────────────────────────────
   _listModels() {
     console.log();
     console.log(chalk.bold('  Available Models'));
@@ -247,7 +258,7 @@ export class REPL {
     console.log();
   }
 
-  // ── /keys — manage API keys per provider ─────────────────────────────────────
+  // ── /keys ─────────────────────────────────────────────────────────────────
   async _handleKeysCommand(args) {
     if (args.length === 0 || args[0] === 'list') {
       console.log();
@@ -291,7 +302,7 @@ export class REPL {
     printWarning('Usage: /keys [list | set PROVIDER KEY | clear PROVIDER]');
   }
 
-  // ── /config ───────────────────────────────────────────────────────────────────
+  // ── /config ───────────────────────────────────────────────────────────────
   async _handleConfigCommand(args) {
     if (args.length === 0) { printConfig(getAllConfig()); return; }
     if (args[0] === 'set' && args.length >= 3) {
@@ -308,6 +319,7 @@ export class REPL {
     printWarning('Usage: /config [set KEY VALUE | get KEY]');
   }
 
+  // ── /memory ───────────────────────────────────────────────────────────────
   _showMemory() {
     const keys = Object.keys(this.memory);
     if (keys.length === 0) { printInfo('Memory is empty.'); return; }
@@ -322,7 +334,6 @@ export class REPL {
       const data = await fs.readFile(this._memoryFile, 'utf-8');
       this.memory = JSON.parse(data);
     } catch (err) {
-      // File may not exist on first run — that's expected
       if (process.env.DEBUG && err.code !== 'ENOENT') console.error('[dmcode] memory load failed:', err.message);
       this.memory = {};
     }
@@ -336,14 +347,20 @@ export class REPL {
     }
   }
 
+  // ── /cd ───────────────────────────────────────────────────────────────────
   async _changeDirectory(target) {
     if (!target) { printInfo(`CWD: ${this.cwd}`); return; }
     const newCwd = path.resolve(this.cwd, target);
     try {
       await fs.access(newCwd);
       this.cwd = newCwd;
-      this.agent.cwd = newCwd;
-      this.agent.executor.cwd = newCwd;
+      if (this.agent) {
+        this.agent.cwd = newCwd;
+        this.agent.executor.cwd = newCwd;
+      }
+      // Update memory file path to new directory
+      this._memoryFile = path.join(this.cwd, '.dmcode-memory.json');
+      await this._loadMemory();
       printSuccess(`Changed to: ${newCwd}`);
       printSessionLine(this.cwd, MODEL_DISPLAY);
     } catch {
@@ -351,6 +368,7 @@ export class REPL {
     }
   }
 
+  // ── Tool confirmation ─────────────────────────────────────────────────────
   async _confirmTool(toolName, params) {
     const details = this._describeToolAction(toolName, params);
     printConfirmBox(`Allow: ${toolName}`, details);
@@ -380,6 +398,7 @@ export class REPL {
     }
   }
 
+  // ── Ctrl+C ────────────────────────────────────────────────────────────────
   _handleInterrupt() {
     if (this.processing && this.agent) {
       this.agent.abort();
@@ -389,10 +408,8 @@ export class REPL {
       printWarning('Interrupted — press Enter to continue.');
       this.input.resume();
     } else if (this._pendingExit) {
-      // Second Ctrl+C — exit immediately
       this._exit();
     } else {
-      // First Ctrl+C at idle prompt — warn and arm the flag
       this._pendingExit = true;
       console.log();
       printInfo('Press Ctrl+C again or /exit to quit.');
@@ -400,30 +417,27 @@ export class REPL {
   }
 
   _exit() {
-    if (this._exiting) return; // prevent double-fire from close event
+    if (this._exiting) return;
     this._exiting = true;
     console.log();
-    // Fix 5: Mark session as completed on clean exit
-    if (this.agent) {
-      this.agent.markSessionCompleted();
-    }
+    if (this.agent) this.agent.markSessionCompleted();
     printInfo(`Thanks for using ${TOOL_NAME}. Goodbye!`);
     console.log();
     this.input.close();
     process.exit(0);
   }
 
-  // ── /compact — manually compact conversation (Fix 2) ──────────────────────
+  // ── /compact ──────────────────────────────────────────────────────────────
   async _compact(instruction) {
     if (!this.agent) { printWarning('No active agent.'); return; }
     await this.agent.compactHistory(instruction || 'manual');
   }
 
-  // ── /cost — show running token spend (Fix 2) ──────────────────────────────
+  // ── /cost ─────────────────────────────────────────────────────────────────
   _showCost() {
     if (!this.agent) { printWarning('No active agent.'); return; }
     const modelId = getSelectedModelId();
-    const model = getModelById(modelId);
+    const model   = getModelById(modelId);
     printCostSummary(
       this.agent.inputTokens,
       this.agent.outputTokens,
@@ -432,53 +446,44 @@ export class REPL {
     );
   }
 
-  // ── /resume — resume a saved session (Fix 5) ──────────────────────────────
+  // ── /resume ───────────────────────────────────────────────────────────────
   async _resumeSession(sessionId) {
     if (!sessionId) {
-      // Show session picker
       const sessions = await SessionPersistence.listSessions();
       printSessionList(sessions);
-      if (sessions.length > 0) {
-        printInfo('Usage: /resume <session-id>');
-      }
+      if (sessions.length > 0) printInfo('Usage: /resume <session-id>');
       return;
     }
     if (!this.agent) { printWarning('No active agent.'); return; }
     const restored = await this.agent.restoreSession(sessionId);
-    if (restored) {
-      printSuccess(`Resumed session ${sessionId}`);
-    } else {
-      printError(`Session not found: ${sessionId}`);
-    }
+    if (!restored) printError(`Session not found: ${sessionId}`);
   }
 
-  // ── /sessions — list saved sessions (Fix 5) ────────────────────────────────
+  // ── /sessions ─────────────────────────────────────────────────────────────
   async _listSessions() {
     const sessions = await SessionPersistence.listSessions();
     printSessionList(sessions);
   }
 
-  // ── /save — export session to Markdown file ──────────────────────────────
+  // ── /undo — restore the last file overwritten by Annihilator ─────────────
+  async _handleUndo() {
+    if (!this.agent) { printWarning('No active agent.'); return; }
+    await this.agent.undoLastEdit();
+  }
+
+  // ── /save — export session to Markdown ───────────────────────────────────
   async _handleSave(userFilename) {
     const history = this.agent?.history || [];
     const modelId = getSelectedModelId();
-    const model = getModelById(modelId);
+    const model   = getModelById(modelId);
 
-    // Build default filename if none provided
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const timestamp   = new Date().toISOString().replace(/[:.]/g, '-');
     const defaultName = `dm-session-${timestamp}.md`;
-    const filename = userFilename ?? defaultName;
+    const filename    = userFilename ?? defaultName;
+    const outputPath  = path.isAbsolute(filename) ? filename : path.join(this.cwd, filename);
 
-    // Resolve to absolute path relative to the current working directory
-    const outputPath = path.isAbsolute(filename)
-      ? filename
-      : path.join(this.cwd, filename);
+    fsSync.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-    // Ensure parent directory exists for nested paths
-    const parentDir = path.dirname(outputPath);
-    fsSync.mkdirSync(parentDir, { recursive: true });
-
-    // Build Markdown content
     const lines = [];
     lines.push(`# DM Code Session`);
     lines.push(``);
@@ -487,20 +492,19 @@ export class REPL {
     lines.push(`| **Exported** | ${new Date().toISOString()} |`);
     lines.push(`| **Model** | ${model.displayName} |`);
     lines.push(`| **Working Dir** | \`${this.cwd}\` |`);
+    lines.push(`| **Session ID** | \`${this.agent?.getSessionId() || 'n/a'}\` |`);
     lines.push(`| **Messages** | ${history.length} |`);
     lines.push(``);
     lines.push(`---`);
     lines.push(``);
 
     for (const msg of history) {
-      // Skip system messages from the export
       if (msg.role === 'system') continue;
 
       const role = msg.role === 'user' ? '## 👤 User' : '## 🤖 Annihilator';
       lines.push(role);
       lines.push(``);
 
-      // msg.content can be a string or an array of content blocks (Anthropic format)
       if (typeof msg.content === 'string') {
         lines.push(msg.content);
       } else if (Array.isArray(msg.content)) {
@@ -526,10 +530,8 @@ export class REPL {
       lines.push(``);
     }
 
-    const markdown = lines.join('\n');
-
     try {
-      fsSync.writeFileSync(outputPath, markdown, 'utf8');
+      fsSync.writeFileSync(outputPath, lines.join('\n'), 'utf8');
       printSuccess(`Session saved → ${outputPath}`);
     } catch (err) {
       printError(`Save failed: ${err.message}`);
