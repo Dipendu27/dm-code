@@ -39,7 +39,7 @@ export class MCPSchemaManager {
   pruneInactive(ttlMs = 10 * 60 * 1000) {
     const now = Date.now();
     for (const [name, ts] of this.lastUsed) {
-      if (now - ts > ttlMs) {
+      if (now - ts >= ttlMs) {
         this.activeInSession.delete(name);
         // Keep the schema cached — just don't inject it
       }

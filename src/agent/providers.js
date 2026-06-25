@@ -160,8 +160,10 @@ export class ProviderClient {
       tools: functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined,
     });
 
-    const lastText = lastMsg?.parts?.[0]?.text || '';
-    const result   = await chat.sendMessageStream(lastText);
+    // If the last message has functionResponse parts, send them as-is.
+    // Otherwise extract the text for sendMessageStream.
+    const lastParts = lastMsg?.parts || [{ text: '' }];
+    const result   = await chat.sendMessageStream(lastParts);
 
     return { stream: result.stream, adapter: 'google', fullResult: result };
   }

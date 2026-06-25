@@ -67,12 +67,12 @@ export class Logger {
    * Log timing of operations
    */
   time(label) {
+    const startTime = Date.now();
     return {
       end: (message, extra) => {
-        const duration = Date.now() - label._startTime;
+        const duration = Date.now() - startTime;
         this.debug(message, { durationMs: duration, ...extra });
       },
-      _startTime: Date.now(),
     };
   }
 }
