@@ -279,14 +279,35 @@ export class REPL {
       return;
     }
 
-    if (args[0] === 'set' && args[1] && args[2]) {
+    if (args[0] === 'set' && args[1]) {
       const provider = args[1].toLowerCase();
-      const key      = args[2];
       const validProviders = ['anthropic', 'google', 'groq', 'mistral'];
       if (!validProviders.includes(provider)) {
         printError(`Unknown provider: ${provider}. Use: anthropic | google | groq | mistral`);
         return;
       }
+
+      let key = args[2] || '';
+
+      // If no key provided inline, prompt interactively (keeps key out of shell history)
+      if (!key) {
+        const model = MODELS.find(m => m.provider === provider);
+        if (model) {
+          console.log();
+          printInfo(`Get your free key at: ${model.apiKeyUrl}`);
+        }
+        key = await new Promise((resolve) => {
+          this.input.rl.question(chalk.hex('#CC785C')(`  Paste ${provider} API key: `), (answer) => {
+            resolve(answer.trim());
+          });
+        });
+      }
+
+      if (!key) {
+        printWarning('No key entered. Skipped.');
+        return;
+      }
+
       setApiKey(provider, key);
       this._initAgent();
       printSuccess(`API key saved for ${providerBadge(provider)}`);

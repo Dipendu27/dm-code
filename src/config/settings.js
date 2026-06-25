@@ -1,6 +1,30 @@
 // DM Code — Configuration Manager
 import Conf from 'conf';
+import fsNode from 'fs';
+import pathNode from 'path';
 import { TOOL_NAME, MODEL_VERSION, DEFAULT_MODEL_ID } from './constants.js';
+
+// ── Load .env file (zero-dependency) ────────────────────────────────────────
+// Loads variables from .env in cwd into process.env.
+// Only sets variables that are not already set (existing env takes priority).
+(function loadDotenv(dir = process.cwd()) {
+  const envPath = pathNode.join(dir, '.env');
+  if (!fsNode.existsSync(envPath)) return;
+  try {
+    const lines = fsNode.readFileSync(envPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  } catch { /* .env load failure is non-fatal */ }
+})();
 
 const schema = {
   apiKeys: {

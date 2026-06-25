@@ -42,7 +42,8 @@ import { SessionPersistence } from './session.js';
 import { MCPSchemaManager } from './mcp-manager.js';
 
 const MAX_TOOL_ROUNDS = 30;
-const FALLBACK_ORDER = ['google', 'groq', 'anthropic', 'mistral'];
+// Priority: genuinely unlimited free first, quota-based last
+const FALLBACK_ORDER = ['google', 'groq', 'mistral', 'anthropic'];
 
 export class AgentLoop {
   constructor({ cwd, onConfirm, autoApprove = false, verbose = false, memoryRef, sessionId }) {
@@ -262,37 +263,33 @@ export class AgentLoop {
         const fallbackParams = this._buildFallbackParams(fallbackProvider);
         if (!fallbackParams) continue;
 
+        const origClient  = this.client;
+        const origModel   = this.model;
+        const origModelId = this.modelId;
+
         try {
           printInfo(`→ Trying ${fallbackProvider}...`);
-
-          const origClient  = this.client;
-          const origModel   = this.model;
-          const origModelId = this.modelId;
 
           this.client  = new ProviderClient(fallbackParams.modelId);
           this.model   = fallbackParams.model;
           this.modelId = fallbackParams.modelId;
 
-          try {
-            const result = await this._callModel();
-            printInfo(`[Used ${fallbackProvider} as fallback — your default model is unchanged]`);
-            this.client  = origClient;
-            this.model   = origModel;
-            this.modelId = origModelId;
-            return result;
-          } catch (fallbackErr) {
-            this.client  = origClient;
-            this.model   = origModel;
-            this.modelId = origModelId;
-            if (this._isRateLimitError(fallbackErr)) {
-              printWarning(`${fallbackProvider} also rate-limited. Trying next...`);
-              continue;
-            }
-            throw fallbackErr;
-          }
-        } catch (outerErr) {
-          if (this._isRateLimitError(outerErr)) continue;
-          throw outerErr;
+          const result = await this._callModel();
+          printInfo(`[Used ${fallbackProvider} as fallback — your default model is unchanged]`);
+          // Restore original client after successful fallback
+          this.client  = origClient;
+          this.model   = origModel;
+          this.modelId = origModelId;
+          return result;
+        } catch (fallbackErr) {
+          // Always restore original client
+          this.client  = origClient;
+          this.model   = origModel;
+          this.modelId = origModelId;
+          // Always continue to next provider, regardless of error type
+          const reason = fallbackErr.message?.slice(0, 80) ?? 'unknown error';
+          printWarning(`${fallbackProvider} unavailable: ${reason}`);
+          continue;
         }
       }
 
@@ -345,18 +342,39 @@ export class AgentLoop {
     return this._consumeOpenAIStream(response.body);
   }
 
-  // ── Check if error is a rate limit ──────────────────────────────────────────
+  // ── Check if error should trigger provider fallback ──────────────────────────
+  // Covers: rate limits (429), billing/quota exhaustion (400/402),
+  // and various provider-specific error message strings.
   _isRateLimitError(err) {
     const status = err.status ?? err.statusCode ?? err.response?.status;
     const msg    = (err.message ?? '').toLowerCase();
+
+    // HTTP status codes that indicate "can't serve right now, try elsewhere"
+    if (status === 429) return true; // standard rate limit
+    if (status === 402) return true; // payment required
+
+    // 400 with billing/quota message (Anthropic-specific)
+    if (status === 400 && (
+      msg.includes('credit balance') ||
+      msg.includes('billing') ||
+      msg.includes('insufficient_quota') ||
+      msg.includes('purchase credits')
+    )) return true;
+
+    // Provider-specific message strings (provider-agnostic, catch-all)
     return (
-      status === 429 ||
-      msg.includes('rate_limit')        ||
-      msg.includes('rate limit')        ||
-      msg.includes('quota')             ||
-      msg.includes('too many requests') ||
-      msg.includes('resource_exhausted')||
-      msg.includes('tokens per minute')
+      msg.includes('rate_limit')               ||
+      msg.includes('rate limit')               ||
+      msg.includes('too many requests')        ||
+      msg.includes('quota exceeded')           ||
+      msg.includes('quota')                    ||
+      msg.includes('resource_exhausted')       ||  // Google gRPC code
+      msg.includes('tokens per minute')        ||  // Groq-specific
+      msg.includes('requests per minute')      ||  // Groq-specific
+      msg.includes('credit balance is too low')||  // Anthropic billing
+      msg.includes('insufficient_quota')       ||  // OpenAI-compatible
+      msg.includes('plan limits')              ||  // Groq free tier
+      (msg.includes('upgrade') && msg.includes('billing')) // Anthropic upgrade prompt
     );
   }
 
@@ -499,7 +517,7 @@ export class AgentLoop {
   // ── Call the model via the active provider (with retry + exponential backoff) ─
   async _callModel() {
     const messages    = this._buildMessages();
-    const MAX_RETRIES = 5;
+    const MAX_RETRIES = 2; // reduced from 5 — fast-fail to trigger fallback sooner
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -521,11 +539,16 @@ export class AgentLoop {
       } catch (err) {
         if (err.name === 'AbortError') return null;
 
+        // Never retry rate limits or billing errors — let fallback handle them immediately
+        if (this._isRateLimitError(err)) {
+          throw err;
+        }
+
         const isRetryable = this._isRetryableError(err);
         if (isRetryable && attempt < MAX_RETRIES) {
           const baseDelay = Math.pow(2, attempt) * 1000;
           const jitter    = Math.random() * 500;
-          const delay     = Math.min(baseDelay + jitter, 30_000);
+          const delay     = Math.min(baseDelay + jitter, 15_000);
 
           setThinkingMessage(`Connection dropped — retrying (${attempt + 1}/${MAX_RETRIES})…`);
           startThinking();
@@ -533,12 +556,8 @@ export class AgentLoop {
           continue;
         }
 
-        // Better error messages for common failure modes
-        if (/429|rate.?limit/i.test(err.message) || err.status === 429) {
-          printError('Rate limit hit. Check your plan limits or try a different model.');
-        } else if (err.status >= 500 || /5\d{2}|server.?error/i.test(err.message)) {
-          printError('Server error — check provider status page.');
-        }
+        // Human-readable error messages instead of raw JSON
+        printError(this._humaniseError(err));
         throw err;
       }
     }
@@ -548,14 +567,43 @@ export class AgentLoop {
   }
 
   // ── Check if an error is transient and retryable ─────────────────────────────
+  // NOTE: Rate limits (429) are explicitly NOT retryable — they trigger fallback instead.
   _isRetryableError(err) {
     const msg = err.message || '';
-    if (/429|rate.?limit/i.test(msg))                             return true;
     if (/5\d{2}|502|503|504|server.?error/i.test(msg))           return true;
     if (/ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch.?failed|network/i.test(msg)) return true;
     if (err.status >= 500)  return true;
-    if (err.status === 429) return true;
     return false;
+  }
+
+  // ── Convert raw API errors into clean, human-readable messages ───────────────
+  _humaniseError(err) {
+    const status = err.status ?? err.statusCode;
+    const msg    = (err.message ?? '').toLowerCase();
+    const provider = this.model?.providerLabel || this.model?.provider || 'Provider';
+
+    if (status === 429 || msg.includes('rate_limit') || msg.includes('too many requests')) {
+      return `${provider} rate limit reached. Switching to next available provider...`;
+    }
+    if (msg.includes('credit balance') || msg.includes('billing') || msg.includes('insufficient_quota')) {
+      return `${provider} account has no remaining credits. Switch provider or add credits.`;
+    }
+    if (status === 401 || msg.includes('invalid api key') || msg.includes('authentication')) {
+      return `${provider} API key is invalid. Run: dmcode keys set ${this.model?.provider || 'provider'} YOUR_KEY`;
+    }
+    if (status === 404) {
+      return `Model not found on ${provider}. Run: dmcode models to see available options.`;
+    }
+    if (msg.includes('timeout') || msg.includes('timed out')) {
+      return `${provider} request timed out. Check your internet connection and try again.`;
+    }
+    if (err.status >= 500 || /server.?error/i.test(msg)) {
+      return `${provider} server error — check provider status page.`;
+    }
+
+    // Fallback: show a short version, not the full JSON
+    const shortMsg = err.message?.slice(0, 120) ?? 'Unknown error';
+    return `${provider} error: ${shortMsg}`;
   }
 
   // ── Anthropic native stream consumer ─────────────────────────────────────────
@@ -740,7 +788,7 @@ export class AgentLoop {
       Object.assign(this.memoryRef, data.memory);
     }
 
-    printInfo(`Restored session ${sessionId} (${this.turnCount} turns, ${(this.inputTokens + this.outputTokens).toLocaleString()} tokens)`);
+    printInfo(`Restored session ${sessionId} (${this.turnCount} turns, ${(this.inputTokens + this.outputTokens).toLocaleString('en-US')} tokens)`);
     return true;
   }
 

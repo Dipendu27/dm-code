@@ -183,7 +183,7 @@ export function renderContextBar(usedTokens, totalTokens) {
 
   const reset = '\x1b[0m';
   const label = `${color}[ctx ${bar} ${pct}%]${reset}`;
-  const detail = c.dim(` ${usedTokens.toLocaleString()} / ${totalTokens.toLocaleString()} tokens`);
+  const detail = c.dim(` ${usedTokens.toLocaleString('en-US')} / ${totalTokens.toLocaleString('en-US')} tokens`);
   console.log(`  ${label}${detail}`);
 }
 
@@ -198,8 +198,8 @@ export function printCompactNotice(reason, beforeTokens, afterTokens) {
   );
   console.log(
     c.muted('    Freed ') +
-    c.success(`~${saved.toLocaleString()} tokens`) +
-    c.muted(` — now at ${afterTokens.toLocaleString()}`)
+    c.success(`~${saved.toLocaleString('en-US')} tokens`) +
+    c.muted(` — now at ${afterTokens.toLocaleString('en-US')}`)
   );
   console.log();
 }
@@ -211,9 +211,9 @@ export function printCostSummary(inputTokens, outputTokens, modelName, sessionTu
   console.log(c.muted('  ' + '─'.repeat(44)));
   console.log('  ' + c.muted('Model:'.padEnd(18))    + c.code(modelName));
   console.log('  ' + c.muted('Turns:'.padEnd(18))    + c.code(String(sessionTurns)));
-  console.log('  ' + c.muted('Input tokens:'.padEnd(18))  + c.dim(inputTokens.toLocaleString()));
-  console.log('  ' + c.muted('Output tokens:'.padEnd(18)) + c.dim(outputTokens.toLocaleString()));
-  console.log('  ' + c.muted('Total tokens:'.padEnd(18))  + chalk.bold((inputTokens + outputTokens).toLocaleString()));
+  console.log('  ' + c.muted('Input tokens:'.padEnd(18))  + c.dim(inputTokens.toLocaleString('en-US')));
+  console.log('  ' + c.muted('Output tokens:'.padEnd(18)) + c.dim(outputTokens.toLocaleString('en-US')));
+  console.log('  ' + c.muted('Total tokens:'.padEnd(18))  + chalk.bold((inputTokens + outputTokens).toLocaleString('en-US')));
   console.log();
 }
 
@@ -545,12 +545,12 @@ export function printTokenUsage(inputTokens, outputTokens, cacheReadTokens = 0) 
   const total = inputTokens + outputTokens;
   const parts = [
     c.muted('  tokens: '),
-    c.dim(`in ${inputTokens.toLocaleString()}`),
+    c.dim(`in ${inputTokens.toLocaleString('en-US')}`),
     c.muted(' / '),
-    c.dim(`out ${outputTokens.toLocaleString()}`),
+    c.dim(`out ${outputTokens.toLocaleString('en-US')}`),
   ];
   if (cacheReadTokens > 0) {
-    parts.push(c.muted(' / '), c.dim(`cache ${cacheReadTokens.toLocaleString()}`));
+    parts.push(c.muted(' / '), c.dim(`cache ${cacheReadTokens.toLocaleString('en-US')}`));
   }
   console.log(parts.join(''));
 }
@@ -577,7 +577,7 @@ export function printSessionList(sessions) {
       `  ${chalk.bold(String(i + 1).padStart(2))}. ` +
       statusIcon + '  ' +
       c.code(shortCwd) + '  ' +
-      c.dim(`${s.turns} turns, ${s.tokens.toLocaleString()} tokens`) + '  ' +
+      c.dim(`${s.turns} turns, ${s.tokens.toLocaleString('en-US')} tokens`) + '  ' +
       c.muted(age)
     );
     console.log(c.dim(`      ID: ${s.id}  Model: ${s.modelId || 'unknown'}`));

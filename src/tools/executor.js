@@ -443,8 +443,42 @@ export class ToolExecutor {
 
   // ── web_fetch ──────────────────────────────────────────────────────────────
   async webFetch({ url, format = 'text' }) {
+    // ── URL validation (SSRF prevention) ──────────────────────────────────
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`Invalid URL: ${url}`);
+    }
+
+    // Block non-HTTP protocols (file://, ftp://, data://, etc.)
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(`Blocked: only http/https URLs are allowed. Got: ${parsed.protocol}`);
+    }
+
+    // Block SSRF targets (cloud metadata endpoints, localhost)
+    const BLOCKED_HOSTS = [
+      '169.254.169.254',          // AWS instance metadata
+      '169.254.170.2',            // ECS metadata
+      'metadata.google.internal', // GCP metadata
+      '100.100.100.200',          // Alibaba Cloud metadata
+      'localhost',
+      '127.0.0.1',
+      '0.0.0.0',
+      '::1',
+    ];
+    const host = parsed.hostname.toLowerCase();
+    if (BLOCKED_HOSTS.some(blocked => host === blocked || host.endsWith('.' + blocked))) {
+      throw new Error(`Blocked: requests to ${host} are not allowed (SSRF protection).`);
+    }
+
+    // Block private IP ranges
+    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(host)) {
+      throw new Error(`Blocked: requests to private IP ranges are not allowed.`);
+    }
+
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'DM-Code/1.0 (coding assistant)' },
+      headers: { 'User-Agent': 'DM-Code/1.3.0 (coding assistant)' },
       signal:  AbortSignal.timeout(15_000),
     });
 
