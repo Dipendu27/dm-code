@@ -38,7 +38,11 @@
     "annihilator",
     "dm-code",
     "dmcode",
-    "free"
+    "free",
+    "mcp",
+    "model-context-protocol",
+    "open-source",
+    "claude-code-alternative"
   ],
   "author": "Dipendu Mondal",
   "license": "MIT",
