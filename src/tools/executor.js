@@ -3,6 +3,7 @@
 
 import fs   from 'fs/promises';
 import path from 'path';
+import os   from 'os';
 import { execaCommand } from 'execa';
 import { glob }         from 'glob';
 
@@ -287,9 +288,17 @@ export class ToolExecutor {
     await fs.mkdir(path.dirname(abs), { recursive: true });
 
     let existed = false;
-    try { await fs.access(abs); existed = true; } catch {}
+    let oldContent = '';
+    try { 
+      oldContent = await fs.readFile(abs, 'utf-8');
+      existed = true; 
+    } catch {}
 
     await fs.writeFile(abs, content, 'utf-8');
+    
+    // Automatically open IDE diff viewer
+    openDiffInIDE(abs, oldContent, content).catch(() => {});
+
     const lines = content.split('\n').length;
     return `${existed ? 'Overwrote' : 'Created'} ${filePath} (${lines} lines)`;
   }
@@ -316,6 +325,9 @@ export class ToolExecutor {
 
     const updated = original.replace(old_string, new_string);
     await fs.writeFile(abs, updated, 'utf-8');
+
+    // Automatically open IDE diff viewer
+    openDiffInIDE(abs, original, updated).catch(() => {});
 
     const linesBefore = original.split('\n').length;
     const linesAfter  = updated.split('\n').length;
@@ -554,4 +566,29 @@ function resolvePath(filePath, cwd) {
   }
 
   return resolved;
+}
+
+// ─── IDE Diff Viewer Helper ──────────────────────────────────────────────────
+async function openDiffInIDE(filePath, oldContent, newContent) {
+  try {
+    // Save old content to a temporary file
+    const tmpName = `dmcode_diff_${Date.now()}_${path.basename(filePath)}`;
+    const tmpPath = path.join(os.tmpdir(), tmpName);
+    await fs.writeFile(tmpPath, oldContent, 'utf-8');
+
+    // Check for cursor first, then code
+    try {
+      await execaCommand('cursor -v', { shell: true, timeout: 2000 });
+      execaCommand(`cursor --diff "${tmpPath}" "${filePath}"`, { shell: true, detached: true });
+      return;
+    } catch {}
+
+    try {
+      await execaCommand('code -v', { shell: true, timeout: 2000 });
+      execaCommand(`code --diff "${tmpPath}" "${filePath}"`, { shell: true, detached: true });
+      return;
+    } catch {}
+  } catch (err) {
+    // Silently fail if IDE diff cannot be opened
+  }
 }

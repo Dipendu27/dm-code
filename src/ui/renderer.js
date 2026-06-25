@@ -98,6 +98,7 @@ class StreamingMarkdown {
     this.inCodeBlock = false;
     this.inInlineCode = false;
     this.inBold = false;
+    this.inThink = false;
   }
 
   push(text) {
@@ -119,18 +120,32 @@ class StreamingMarkdown {
         this.inInlineCode = !this.inInlineCode;
         this.buffer = this.buffer.slice(1);
         output += this.inInlineCode ? chalk.bgHex('#222').cyan('') : chalk.reset(c.assistant(''));
+      } else if (this.buffer.startsWith('<think>')) {
+        this.inThink = true;
+        this.buffer = this.buffer.slice(7);
+        output += '\n' + c.muted('  ┌─ ') + c.info('Backend thought') + '\n' + c.muted('  │ ');
+      } else if (this.buffer.startsWith('</think>')) {
+        this.inThink = false;
+        this.buffer = this.buffer.slice(8);
+        output += '\n' + c.muted('  └─\n');
       } else {
         // Find next potential token
-        const nextToken = this.buffer.match(/```|\*\*|`/);
+        const nextToken = this.buffer.match(/```|\*\*|`|<think>|<\/think>|\n/);
         const idx = nextToken ? nextToken.index : this.buffer.length;
 
         // If a token is partially formed at the end, wait for more chunks
-        if (!nextToken && (this.buffer.endsWith('`') || this.buffer.endsWith('*'))) {
+        if (!nextToken && (this.buffer.endsWith('`') || this.buffer.endsWith('*') || this.buffer.endsWith('<') || this.buffer.endsWith('</') || this.buffer.endsWith('<t'))) {
           break; // wait for next chunk
         }
 
-        const chunk = this.buffer.slice(0, idx || 1);
+        let chunk = this.buffer.slice(0, idx || 1);
         this.buffer = this.buffer.slice(chunk.length);
+
+        // Handle newlines inside think blocks
+        if (chunk === '\n' && this.inThink) {
+           output += '\n' + c.muted('  │ ');
+           continue;
+        }
 
         // Apply formatting
         if (this.inCodeBlock) {
@@ -139,6 +154,8 @@ class StreamingMarkdown {
           output += chalk.bgHex('#222').cyan(chunk);
         } else if (this.inBold) {
           output += chunk; // ANSI bold is active
+        } else if (this.inThink) {
+          output += c.dim(chunk);
         } else {
           output += c.assistant(chunk);
         }
