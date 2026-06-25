@@ -30,7 +30,7 @@ npm link
 ```
 
 > **Note:** `npm link` registers `dmcode`, `dm`, `dm-code`, and `annihilator` as global commands.
-> On macOS/Linux you can also run: `npm install -g git+https://github.com/Dipendu27/dm-code.git`
+> On macOS/Linux you can also run: `npm install -g dm-code`
 
 That's it. Now type `dmcode` from **any directory** on **any device**:
 
@@ -69,7 +69,18 @@ dmcode --version
 
 ## 📋 Changelog
 
-### v1.2.0 — *Latest*
+### v1.3.1 — *Latest*
+
+**✨ Major Features**
+- **Public NPM Release!** You can now install globally via `npm install -g dm-code`
+- New CI Pipeline for automated tests on Windows, macOS, and Linux
+- Improved terminal UI renderer and security auto-approve strictness
+
+**🔒 Security Improvements**
+- Patched an edge-case path traversal bypass in `validateFilePath`
+- Sanitized Session IDs to prevent localized path traversal
+
+### v1.2.0
 
 **✨ Major Features**
 - New input validation layer prevents directory traversal & injection attacks
@@ -171,7 +182,7 @@ dmcode --version
 ### Option 1: npm global install (recommended)
 
 ```bash
-npm install -g git+https://github.com/Dipendu27/dm-code.git
+npm install -g dm-code
 dmcode setup
 ```
 
@@ -442,7 +453,7 @@ Environment variables always take priority over saved config.
 
 ```bash
 # Re-link globally:
-npm install -g git+https://github.com/Dipendu27/dm-code.git
+npm install -g dm-code
 
 # Or from the project directory:
 cd dm-code && npm link
@@ -500,10 +511,10 @@ For maintainers:
 
 ```bash
 npm login
-npm publish
+npm publish --access public
 ```
 
-Users can then install globally with `npm install -g git+https://github.com/Dipendu27/dm-code.git` (or `npm install -g dm-code` once published).
+Users can then install globally with `npm install -g dm-code`.
 
 ---
 
