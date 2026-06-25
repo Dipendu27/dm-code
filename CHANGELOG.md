@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] — 2024-06-25
+
+### ✨ Major Features
+- **MCP Schema Management** — Full support for Model Context Protocol.
+- **Session Persistence & Restore** — Automatically saves session state; restore with `/resume <id>`.
+- **Free-Tier Optimization** — Revamped provider fallback logic prioritizes truly free models (Google, Groq) before quota-based ones.
+
+### 🔒 Security Improvements
+- **URL Sanitization** — `web_fetch` now blocks SSRF targets, private IPs, and non-HTTP protocols.
+- **Interactive Keys** — `/keys set <provider>` now prompts interactively, keeping keys out of shell history.
+- **Strict Rate Limit Handling** — Fast-fails on 429s and billing errors, instantly failing over to the next available provider.
+
+### 🚀 Performance Enhancements
+- **`.env` File Support** — Zero-dependency dotenv loading on startup.
+- **Task-Level Progress Indicator** — Improved visibility into multi-step agent actions.
+- **International Formatting** — Consistent en-US number formatting for token counts globally.
+- **Humanized Errors** — Clean, actionable error messages replace raw API JSON dumps.
+
+### 🐛 Bug Fixes
+- Fixed an off-by-one error in MCP schema pruning logic.
+- Fixed logger `time()` closure bug.
+- Fixed Gemini streaming to correctly handle function response parts.
+- Fixed Groq retry loop getting stuck for 33s on rate limits.
+
+---
+
 ## [1.2.0] — 2024-01-XX
 
 ### ✨ Major Features

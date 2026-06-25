@@ -216,7 +216,12 @@ export class AgentLoop {
           content: toolResults,
         });
 
-        if (stopReason === 'end_turn') break;
+      }
+
+      // Show task summary if it was a multi-step agentic turn
+      if (rounds > 1 && !this.abortController?.signal?.aborted) {
+        console.log();
+        printInfo(`Task completed in ${rounds} steps.`);
       }
     } catch (err) {
       stopThinking();

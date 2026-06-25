@@ -303,6 +303,7 @@ dmcode keys clear groq                 # remove a key
 | `/memory` | Show session memory |
 | `/cwd` | Show current working directory |
 | `/cd <path>` | Change working directory |
+| `/resume <id>` | Restore a previous session by its session ID (shown at startup) |
 | `/save` | Export session to Markdown file |
 | `/save <filename>` | Export session to a specific filename or path |
 | `/exit` | Exit DM Code |
@@ -339,8 +340,8 @@ dm-code/
 │   ├── agent/
 │   │   ├── loop.js             ← Agentic loop (multi-provider)
 │   │   ├── providers.js        ← Anthropic / Google / Groq / Mistral clients
-│   │   ├── session.js          ← Session persistence
-│   │   └── mcp-manager.js      ← MCP schema management
+│   │   ├── session.js          ← Session persistence ✨ new in v1.3
+│   │   └── mcp-manager.js      ← MCP schema management ✨ new in v1.3
 │   ├── tools/
 │   │   └── executor.js         ← All 12 tool implementations
 │   ├── ui/
@@ -350,17 +351,37 @@ dm-code/
 │   ├── config/
 │   │   ├── constants.js        ← MODELS registry, theme, system prompt
 │   │   └── settings.js         ← Persistent config (per-provider API keys)
-│   └── utils/
+│   └── utils/                  ← Shared utilities ✨ new in v1.3
 │       ├── validation.js       ← Input validation & security checks
 │       ├── errors.js           ← Custom error types & handling
 │       └── logger.js           ← Structured logging
+├── test-smoke.mjs              ← Smoke tests for session + MCP ✨ new in v1.3
 ├── install.sh                  ← macOS / Linux installer
 ├── install.ps1                 ← Windows PowerShell installer
 ├── CHANGELOG.md                ← Version history
 ├── .npmignore                  ← npm publish exclusions
+├── .env.example                ← Environment variable template
 ├── package.json
 └── README.md
 ```
+
+---
+
+## Session Persistence
+
+DM Code automatically saves every session with a unique ID shown at startup:
+
+```
+ℹ Session ID: 3eb85a0c  (use /resume <id> to restore)
+```
+
+To restore a previous session:
+```
+/resume 3eb85a0c
+```
+
+Sessions persist your conversation history and working directory across restarts.
+They are stored locally in your config directory and are never sent to any server.
 
 ---
 
