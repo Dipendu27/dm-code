@@ -8,7 +8,7 @@ export const MODEL_DISPLAY = 'Annihilator';
 export const MODEL_VERSION = '1.3.4';
 export const TOOL_VERSION  = '1.3.4';
 
-export const MAX_TOKENS              = 8096;
+export const MAX_TOKENS              = 8192;
 export const MAX_CONTEXT_TOKENS      = 1_000_000;
 export const TEMPERATURE             = 1.0;
 export const COMPACT_THRESHOLD       = 0.50;  // Compact at 50% context usage

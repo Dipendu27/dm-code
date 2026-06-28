@@ -42,7 +42,7 @@ const schema = {
   },
   maxTokens: {
     type: 'number',
-    default: 8096,
+    default: 8192,
   },
   verbose: {
     type: 'boolean',

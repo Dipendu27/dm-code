@@ -13,7 +13,7 @@ import {
   printCostSummary, printSessionList, stopThinking,
 } from './ui/renderer.js';
 import {
-  getApiKey, setApiKey, getAllApiKeys, getAllConfig, getConfig, setConfig,
+  getApiKey, setApiKey, getAllConfig, getConfig, setConfig,
   getSelectedModelId, setSelectedModelId, isFirstRun, markFirstRunDone,
 } from './config/settings.js';
 import { TOOL_NAME, MODEL_DISPLAY, MODELS, getModelById } from './config/constants.js';
