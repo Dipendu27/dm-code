@@ -274,7 +274,7 @@ dmcode model
 /model
 
 # Or override for a single session:
-dmcode --model gemini-2.0-flash "refactor my auth module"
+dmcode --model gemini-3.5-flash "refactor my auth module"
 
 # Or by model ID:
 dmcode --model llama-3.3-70b-versatile "write unit tests for utils.py"
@@ -427,7 +427,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export GOOGLE_API_KEY="AIzaSy..."
 export GROQ_API_KEY="gsk_..."
 export MISTRAL_API_KEY="..."
-export DM_MODEL="gemini-2.0-flash"   # default engine override
+export DM_MODEL="gemini-3.5-flash"   # default engine override
 export DEBUG=1                       # enable debug logging
 export DEBUG=verbose                 # extra verbose debug output
 ```

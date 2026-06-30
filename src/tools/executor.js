@@ -2,6 +2,7 @@
 // All tools that Annihilator can call during the agentic loop
 
 import fs   from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import os   from 'os';
 import { execaCommand } from 'execa';
@@ -551,8 +552,22 @@ function resolvePath(filePath, cwd) {
     ? path.resolve(filePath)
     : path.resolve(cwd, filePath);
 
-  const normalizedCwd      = path.resolve(cwd) + path.sep;
-  const normalizedResolved = path.resolve(resolved);
+  const normalizedCwd = path.resolve(cwd) + path.sep;
+
+  // Resolve symlinks before the boundary check — fall back to the lexical
+  // path if it doesn't exist yet (e.g. write_file creating a new file).
+  let normalizedResolved;
+  try {
+    normalizedResolved = fsSync.realpathSync(resolved);
+  } catch {
+    // Path doesn't exist yet — check its parent directory's real path instead
+    try {
+      const realParent = fsSync.realpathSync(path.dirname(resolved));
+      normalizedResolved = path.join(realParent, path.basename(resolved));
+    } catch {
+      normalizedResolved = path.resolve(resolved); // parent doesn't exist either — let mkdir handle it
+    }
+  }
 
   if (
     normalizedResolved !== path.resolve(cwd) &&

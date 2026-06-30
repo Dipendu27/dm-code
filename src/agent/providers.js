@@ -86,7 +86,7 @@ export class ProviderClient {
   }
 
   // ── Google Gemini (via @google/generative-ai SDK) ─────────────────────────
-  async _streamGoogle(messages, tools) {
+  async _streamGoogle(messages, tools, signal) {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const client = new GoogleGenerativeAI(this.apiKey);
 
@@ -163,7 +163,7 @@ export class ProviderClient {
     // If the last message has functionResponse parts, send them as-is.
     // Otherwise extract the text for sendMessageStream.
     const lastParts = lastMsg?.parts || [{ text: '' }];
-    const result   = await chat.sendMessageStream(lastParts);
+    const result   = await chat.sendMessageStream(lastParts, { signal });
 
     return { stream: result.stream, adapter: 'google', fullResult: result };
   }
@@ -181,6 +181,7 @@ export class ProviderClient {
         model:      this.model.id,
         max_tokens: MAX_TOKENS,
         stream:     true,
+        stream_options: { include_usage: true },
         messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
           ...convertToOpenAIMessages(messages),
@@ -214,6 +215,7 @@ export class ProviderClient {
         model:      this.model.id,
         max_tokens: MAX_TOKENS,
         stream:     true,
+        stream_options: { include_usage: true },
         messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
           ...convertToOpenAIMessages(messages),
@@ -327,6 +329,7 @@ export async function* parseOpenAIStream(body) {
   let textOutput  = '';
   const toolCalls = {};  // index → { id, name, arguments }
   let stopReason  = 'end_turn';
+  let usage       = null;
 
   for await (const chunk of body) {
     buffer += decoder.decode(chunk, { stream: true });
@@ -341,6 +344,12 @@ export async function* parseOpenAIStream(body) {
       try { parsed = JSON.parse(data); } catch { continue; }
 
       const choice = parsed.choices?.[0];
+      if (parsed.usage) {
+        usage = {
+          input_tokens:  parsed.usage.prompt_tokens,
+          output_tokens: parsed.usage.completion_tokens,
+        };
+      }
       if (!choice) continue;
 
       const delta = choice.delta || {};
@@ -374,7 +383,7 @@ export async function* parseOpenAIStream(body) {
     return { id: tc.id, name: tc.name, input };
   });
 
-  yield { type: 'done', textOutput, toolCalls: resolvedToolCalls, stopReason };
+  yield { type: 'done', textOutput, toolCalls: resolvedToolCalls, stopReason, usage };
 }
 
 // ─── Parse Google Gemini streaming response ───────────────────────────────────
@@ -382,8 +391,15 @@ export async function* parseGeminiStream(streamResult) {
   let textOutput  = '';
   const toolCalls = [];
   let stopReason  = 'end_turn';
+  let usage       = null;
 
   for await (const chunk of streamResult) {
+    if (chunk.usageMetadata) {
+      usage = {
+        input_tokens:  chunk.usageMetadata.promptTokenCount,
+        output_tokens: chunk.usageMetadata.candidatesTokenCount,
+      };
+    }
     const candidate = chunk.candidates?.[0];
     if (!candidate) continue;
 
@@ -407,5 +423,5 @@ export async function* parseGeminiStream(streamResult) {
   }
 
   if (toolCalls.length > 0) stopReason = 'tool_use';
-  yield { type: 'done', textOutput, toolCalls, stopReason };
+  yield { type: 'done', textOutput, toolCalls, stopReason, usage };
 }

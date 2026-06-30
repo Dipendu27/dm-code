@@ -7,6 +7,7 @@ import { AgentLoop } from '../src/agent/loop.js';
 import {
   getApiKey, setApiKey, getAllConfig, setConfig,
   getSelectedModelId, setSelectedModelId,
+  loadDotenvFrom,
 } from '../src/config/settings.js';
 import {
   TOOL_NAME, TOOL_VERSION, MODEL_DISPLAY,
@@ -293,6 +294,9 @@ program
 
 // ── Single-prompt runner ──────────────────────────────────────────────────────
 async function runSinglePrompt(prompt, { cwd, autoApprove, verbose }) {
+  // Load .env from the actual working directory (may differ from process.cwd() with --cwd)
+  loadDotenvFrom(cwd);
+
   const modelId = getSelectedModelId();
   const model   = getModelById(modelId);
   const key     = getApiKey(model.provider);
@@ -311,6 +315,10 @@ async function runSinglePrompt(prompt, { cwd, autoApprove, verbose }) {
     onConfirm: async (toolName, params) => {
       const { isSafeCommand } = await import('../src/tools/executor.js');
       if (toolName === 'run_command' && isSafeCommand(params?.command || '')) return true;
+      if (!autoApprove) {
+        printError(`"${toolName}" requires confirmation, but single-prompt mode has no interactive prompt. Re-run with --auto-approve, or use the REPL.`);
+        return false;
+      }
       console.log(
         chalk.yellow(`\n  ⚠ Auto-approving: ${toolName}`) +
         chalk.dim(` (${(params?.command || params?.path || '').slice(0, 60)})`)

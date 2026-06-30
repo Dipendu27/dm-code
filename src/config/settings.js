@@ -5,9 +5,9 @@ import pathNode from 'path';
 import { TOOL_NAME, MODEL_VERSION, DEFAULT_MODEL_ID } from './constants.js';
 
 // ── Load .env file (zero-dependency) ────────────────────────────────────────
-// Loads variables from .env in cwd into process.env.
+// Loads variables from .env in the given directory into process.env.
 // Only sets variables that are not already set (existing env takes priority).
-(function loadDotenv(dir = process.cwd()) {
+export function loadDotenvFrom(dir = process.cwd()) {
   const envPath = pathNode.join(dir, '.env');
   if (!fsNode.existsSync(envPath)) return;
   try {
@@ -24,7 +24,10 @@ import { TOOL_NAME, MODEL_VERSION, DEFAULT_MODEL_ID } from './constants.js';
       }
     }
   } catch { /* .env load failure is non-fatal */ }
-})();
+}
+
+// Auto-load from process.cwd() at import time
+loadDotenvFrom();
 
 const schema = {
   apiKeys: {
@@ -62,10 +65,13 @@ const schema = {
   },
 };
 
+const OBFUSCATION_KEY = 'dm-code-local-config-v1'; // not a secret — deters casual file inspection only
+
 export const config = new Conf({
   projectName: 'dm-code',
   schema,
   projectVersion: MODEL_VERSION,
+  encryptionKey: OBFUSCATION_KEY,
 });
 
 // ── Model selection ──────────────────────────────────────────────────────────

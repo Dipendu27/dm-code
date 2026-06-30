@@ -101,8 +101,8 @@ export const MODELS = [
 
   // ── Groq (ultra-fast inference) ───────────────────────────────────────────
   {
-    id:            'llama-3.3-70b-versatile',
-    displayName:   'Llama 3.3 70B',
+    id:            'openai/gpt-oss-120b',
+    displayName:   'GPT-OSS 120B (Groq)',
     provider:      'groq',
     providerLabel: 'Groq',
     tier:          'FREE',
@@ -116,8 +116,8 @@ export const MODELS = [
     recommended:   true,
   },
   {
-    id:            'llama-3.1-8b-instant',
-    displayName:   'Llama 3.1 8B Instant',
+    id:            'openai/gpt-oss-20b',
+    displayName:   'GPT-OSS 20B (Groq)',
     provider:      'groq',
     providerLabel: 'Groq',
     tier:          'FREE',
@@ -131,23 +131,8 @@ export const MODELS = [
     recommended:   false,
   },
   {
-    id:            'mixtral-8x7b-32768',
-    displayName:   'Mixtral 8x7B',
-    provider:      'groq',
-    providerLabel: 'Groq',
-    tier:          'FREE',
-    speed:         'Very Fast',
-    quality:       '★★★★☆',
-    context:       '32K tokens',
-    contextTokens: 32_000,
-    bestFor:       'Code generation, multilingual projects',
-    apiKeyEnv:     'GROQ_API_KEY',
-    apiKeyUrl:     'https://console.groq.com/keys',
-    recommended:   false,
-  },
-  {
-    id:            'deepseek-r1-distill-llama-70b',
-    displayName:   'DeepSeek R1 70B (Groq)',
+    id:            'meta-llama/llama-4-scout-17b-16e-instruct',
+    displayName:   'Llama 4 Scout 17B',
     provider:      'groq',
     providerLabel: 'Groq',
     tier:          'FREE',
@@ -195,11 +180,16 @@ export const MODELS = [
 ];
 
 // Default model on first run
-export const DEFAULT_MODEL_ID = 'gemini-2.0-flash';
+export const DEFAULT_MODEL_ID = 'gemini-3.5-flash'; // matches the recommended:true Google entry
 
 // Get a model entry by ID
 export function getModelById(id) {
-  return MODELS.find(m => m.id === id) || MODELS[0];
+  const found = MODELS.find(m => m.id === id);
+  if (!found) {
+    console.warn(`[dmcode] Unknown model ID "${id}" — falling back to ${MODELS[0].id}. Run "dmcode models" to see valid IDs.`);
+    return MODELS[0];
+  }
+  return found;
 }
 
 // Get unique providers

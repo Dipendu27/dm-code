@@ -15,6 +15,7 @@ import {
 import {
   getApiKey, setApiKey, getAllConfig, getConfig, setConfig,
   getSelectedModelId, setSelectedModelId, isFirstRun, markFirstRunDone,
+  loadDotenvFrom,
 } from './config/settings.js';
 import { TOOL_NAME, MODEL_DISPLAY, MODELS, getModelById } from './config/constants.js';
 import { SessionPersistence } from './agent/session.js';
@@ -35,6 +36,9 @@ export class REPL {
   }
 
   async start() {
+    // Load .env from the actual working directory (may differ from process.cwd() with --cwd)
+    loadDotenvFrom(this.cwd);
+
     // First-run: show model picker and API key setup
     if (isFirstRun()) {
       await showModelPicker({ title: 'Welcome to DM Code — Choose your Annihilator engine', showApiSetup: true });
@@ -232,7 +236,6 @@ export class REPL {
     this.input.pause();
     try {
       const chosen = await inlineModelSwitcher(this.input);
-      this._initAgent();
       console.log();
       printSuccess(`Engine switched to ${chalk.bold(chosen.displayName)}.`);
       printCurrentModel();

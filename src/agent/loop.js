@@ -10,7 +10,7 @@ import {
   getModelById,
   MODELS,
 } from '../config/constants.js';
-import { TOOL_DEFINITIONS, ToolExecutor, isSafeCommand } from '../tools/executor.js';
+import { TOOL_DEFINITIONS, ToolExecutor, isSafeCommand, isDangerous } from '../tools/executor.js';
 import {
   printAssistantPrefix,
   printStreamChunk,
@@ -155,9 +155,9 @@ export class AgentLoop {
           }
 
           const needsConfirm = this._needsConfirmation(toolName, toolInput);
-          const isDangerous = toolName === 'run_command' && !isSafeCommand(toolInput?.command || '');
+          const isReallyDangerous = toolName === 'run_command' && isDangerous(toolInput?.command || '');
           
-          if (needsConfirm && (!this.autoApprove || isDangerous)) {
+          if (needsConfirm && (!this.autoApprove || isReallyDangerous)) {
             // Skip double-confirmation for file mutations already confirmed in _previewFileChange
             const alreadyConfirmed = this._isFileModification(toolName);
             if (!alreadyConfirmed) {
@@ -221,9 +221,14 @@ export class AgentLoop {
       }
 
       // Show task summary if it was a multi-step agentic turn
+      const hitRoundLimit = rounds >= MAX_TOOL_ROUNDS;
       if (rounds > 1 && !this.abortController?.signal?.aborted) {
         console.log();
-        printInfo(`Task completed in ${rounds} steps.`);
+        if (hitRoundLimit) {
+          printWarning(`Reached the ${MAX_TOOL_ROUNDS}-step limit — the task may be incomplete. Send a follow-up message to continue.`);
+        } else {
+          printInfo(`Task completed in ${rounds} steps.`);
+        }
       }
     } catch (err) {
       stopThinking();
@@ -423,10 +428,13 @@ export class AgentLoop {
       }
     }
 
+    const shown = summaryParts.slice(0, 20);
+    const omitted = summaryParts.length - shown.length;
     const compactedSummary = [
       '--- SESSION SUMMARY (compacted) ---',
       `Previous ${toSummarize.length} messages summarized:`,
-      ...summaryParts.slice(0, 20),
+      ...shown,
+      ...(omitted > 0 ? [`(+ ${omitted} earlier message(s) omitted from this summary)`] : []),
       '--- END SUMMARY ---',
     ].join('\n');
 
@@ -680,6 +688,7 @@ export class AgentLoop {
     let textOutput = '';
     let toolCalls  = [];
     let stopReason = 'end_turn';
+    let usage      = null;
     let firstText  = true;
 
     for await (const event of parseOpenAIStream(body)) {
@@ -696,10 +705,11 @@ export class AgentLoop {
       } else if (event.type === 'done') {
         toolCalls  = event.toolCalls;
         stopReason = event.stopReason;
+        usage      = event.usage || null;
       }
     }
 
-    return { stopReason, toolCalls, textOutput, usage: null };
+    return { stopReason, toolCalls, textOutput, usage };
   }
 
   // ── Gemini stream consumer ───────────────────────────────────────────────────
@@ -707,6 +717,7 @@ export class AgentLoop {
     let textOutput = '';
     let toolCalls  = [];
     let stopReason = 'end_turn';
+    let usage      = null;
     let firstText  = true;
 
     for await (const event of parseGeminiStream(streamResult)) {
@@ -723,10 +734,11 @@ export class AgentLoop {
       } else if (event.type === 'done') {
         toolCalls  = event.toolCalls;
         stopReason = event.stopReason;
+        usage      = event.usage || null;
       }
     }
 
-    return { stopReason, toolCalls, textOutput, usage: null };
+    return { stopReason, toolCalls, textOutput, usage };
   }
 
   // ── Build messages for API ───────────────────────────────────────────────────
@@ -777,7 +789,7 @@ export class AgentLoop {
         inputTokens:  this.inputTokens,
         outputTokens: this.outputTokens,
         status:       'active',
-      });
+      }).catch(() => { /* don't break session on async save failure */ });
     } catch { /* don't break session on save failure */ }
   }
 

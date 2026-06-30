@@ -18,7 +18,7 @@ export class SessionPersistence {
   }
 
   // Save session state after every turn
-  save(state) {
+  async save(state) {
     try {
       const data = {
         id: this.sessionId,
@@ -32,7 +32,7 @@ export class SessionPersistence {
         outputTokens: state.outputTokens || 0,
         status: state.status || 'active',  // active | completed | crashed
       };
-      fsSync.writeFileSync(this.file, JSON.stringify(data, null, 2), 'utf-8');
+      await fs.writeFile(this.file, JSON.stringify(data, null, 2), 'utf-8');
     } catch (err) {
       if (process.env.DEBUG) console.error('[dmcode] session save failed:', err.message);
     }
@@ -110,7 +110,8 @@ export class SessionPersistence {
 
   // Delete a session
   static async deleteSession(sessionId) {
-    const file = path.join(SESSION_DIR, `${sessionId}.json`);
+    const safeId = path.basename(sessionId);
+    const file = path.join(SESSION_DIR, `${safeId}.json`);
     try {
       await fs.unlink(file);
       return true;

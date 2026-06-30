@@ -77,8 +77,8 @@ try {
 await ex.deleteFile({ path: '__miss__.txt' });
 
 // ── Model registry ────────────────────────────────────────────────────────
-ok('MODELS: 11 entries', MODELS.length === 11);
-ok('getModelById: valid id', getModelById('gemini-2.0-flash').provider === 'google');
+ok('MODELS: 10 entries', MODELS.length === 10);
+ok('getModelById: valid id', getModelById('gemini-3.5-flash').provider === 'google');
 ok('getModelById: unknown falls back', getModelById('nope').id === MODELS[0].id);
 ok('system prompt: has Annihilator', buildSystemPrompt().includes('Annihilator'));
 
@@ -123,7 +123,7 @@ ok('RateLimiter: blocks over limit', !rl.isAllowed('k'));
 
 // ── SessionPersistence ───────────────────────────────────────────────────
 const sp = new SessionPersistence('test-smoke-' + Date.now());
-sp.save({ cwd: process.cwd(), modelId: 'gemini-2.0-flash', history: [{ role:'user', content:'hello' }], status: 'active' });
+await sp.save({ cwd: process.cwd(), modelId: 'gemini-3.5-flash', history: [{ role:'user', content:'hello' }], status: 'active' });
 const restored = sp.restore();
 ok('SessionPersistence: save/restore', restored?.history?.[0]?.content === 'hello');
 sp.markCompleted();
