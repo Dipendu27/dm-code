@@ -191,12 +191,58 @@ export class ProviderClient {
     return { stream: result.stream, adapter: 'google', fullResult: result };
   }
 
+// Helper: Prune conversation history to fit within strict provider TPM/context limits (e.g. Groq 8000 TPM)
+function _pruneMessagesForLimit(messages, maxPromptTokens = 4500) {
+  let estTokens = Math.ceil(JSON.stringify(messages).length / 3.5) + 500;
+  if (estTokens <= maxPromptTokens || messages.length <= 2) return messages;
+
+  const firstMsg = messages[0];
+  const tailCount = Math.min(4, messages.length - 1);
+  const lastMsgs = messages.slice(-tailCount);
+  const middleMsgs = messages.slice(1, -tailCount);
+
+  // Step 1: Truncate large tool_result outputs or long texts in middle messages
+  const compactedMiddle = middleMsgs.map(m => {
+    if (Array.isArray(m.content)) {
+      return {
+        ...m,
+        content: m.content.map(c => {
+          if (c.type === 'tool_result' && typeof c.content === 'string' && c.content.length > 200) {
+            return { ...c, content: c.content.slice(0, 200) + '... [output truncated for rate/context limit]' };
+          }
+          if (c.type === 'text' && c.text.length > 300) {
+            return { ...c, text: c.text.slice(0, 300) + '... [text truncated for rate/context limit]' };
+          }
+          return c;
+        }),
+      };
+    } else if (typeof m.content === 'string' && m.content.length > 300) {
+      return { ...m, content: m.content.slice(0, 300) + '... [text truncated for rate/context limit]' };
+    }
+    return m;
+  });
+
+  let pruned = [firstMsg, ...compactedMiddle, ...lastMsgs];
+  estTokens = Math.ceil(JSON.stringify(pruned).length / 3.5) + 500;
+
+  // Step 2: If STILL over budget, omit middle messages entirely
+  if (estTokens > maxPromptTokens) {
+    pruned = [
+      firstMsg,
+      { role: 'assistant', content: 'Note: Earlier conversation history was omitted to fit within provider TPM/context limits.' },
+      ...lastMsgs,
+    ];
+  }
+  return pruned;
+}
+
   // ── Groq (OpenAI-compatible API, streaming) ───────────────────────────────
   async _streamGroq(messages, tools, signal) {
-    // Groq free tier has strict TPM (Tokens Per Minute) limits (often 6000 TPM).
-    // Cap max_tokens so prompt_tokens + max_tokens stays under budget to prevent 413 errors.
-    const estPromptTokens = Math.ceil(JSON.stringify(messages).length / 3.5) + 500;
-    const groqMaxTokens   = Math.min(MAX_TOKENS, Math.max(1024, 5500 - estPromptTokens));
+    // Groq free tier has strict TPM (Tokens Per Minute) limits (often 6000-8000 TPM).
+    // Prune older tool outputs and middle conversation history so prompt stays under 4500 tokens to prevent 413 errors.
+    const prunedMessages  = _pruneMessagesForLimit(messages, 4500);
+    const estPromptTokens = Math.ceil(JSON.stringify(prunedMessages).length / 3.5) + 500;
+    const groqMaxTokens   = Math.min(MAX_TOKENS, Math.max(1024, 6500 - estPromptTokens));
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:  'POST',
@@ -212,7 +258,7 @@ export class ProviderClient {
         stream_options: { include_usage: true },
         messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
-          ...convertToOpenAIMessages(messages),
+          ...convertToOpenAIMessages(prunedMessages),
         ],
         tools: tools.map(t => ({
           type:     'function',
@@ -232,6 +278,7 @@ export class ProviderClient {
 
   // ── Mistral (OpenAI-compatible API, streaming) ────────────────────────────
   async _streamMistral(messages, tools, signal) {
+    const prunedMessages = _pruneMessagesForLimit(messages, 24000);
     const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
       method:  'POST',
       headers: {
@@ -246,7 +293,7 @@ export class ProviderClient {
         stream_options: { include_usage: true },
         messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
-          ...convertToOpenAIMessages(messages),
+          ...convertToOpenAIMessages(prunedMessages),
         ],
         tools: tools.map(t => ({
           type:     'function',
@@ -266,6 +313,7 @@ export class ProviderClient {
 
   // ── Ollama Local Fallback (OpenAI-compatible) ─────────────────────────────
   async _streamOllama(messages, tools, signal, model = 'mistral') {
+    const prunedMessages = _pruneMessagesForLimit(messages, 3000);
     const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -276,7 +324,7 @@ export class ProviderClient {
         stream:     true,
         messages: [
           { role: 'system', content: ANNIHILATOR_SYSTEM_PROMPT },
-          ...convertToOpenAIMessages(messages),
+          ...convertToOpenAIMessages(prunedMessages),
         ],
         ...(tools.length > 0 ? {
           tools: tools.map(t => ({

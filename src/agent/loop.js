@@ -375,13 +375,16 @@ export class AgentLoop {
     // HTTP status codes that indicate "can't serve right now, try elsewhere"
     if (status === 429) return true; // standard rate limit
     if (status === 402) return true; // payment required
+    if (status === 413) return true; // payload/request too large (e.g. Groq TPM limit)
 
     // 400 with billing/quota message (Anthropic-specific)
     if (status === 400 && (
       msg.includes('credit balance') ||
       msg.includes('billing') ||
       msg.includes('insufficient_quota') ||
-      msg.includes('purchase credits')
+      msg.includes('purchase credits') ||
+      msg.includes('request too large') ||
+      msg.includes('message size')
     )) return true;
 
     // Provider-specific message strings (provider-agnostic, catch-all)
@@ -397,6 +400,8 @@ export class AgentLoop {
       msg.includes('credit balance is too low')||  // Anthropic billing
       msg.includes('insufficient_quota')       ||  // OpenAI-compatible
       msg.includes('plan limits')              ||  // Groq free tier
+      msg.includes('request too large')        ||  // Groq TPM limit
+      msg.includes('message size')             ||  // Groq TPM limit
       (msg.includes('upgrade') && msg.includes('billing')) // Anthropic upgrade prompt
     );
   }
