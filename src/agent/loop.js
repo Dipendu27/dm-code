@@ -308,7 +308,9 @@ export class AgentLoop {
           this.model   = origModel;
           this.modelId = origModelId;
           // Always continue to next provider, regardless of error type
-          const reason = fallbackErr.message?.slice(0, 80) ?? 'unknown error';
+          const rawMsg = fallbackErr.message ?? 'unknown error';
+          const cleanReason = rawMsg.replace(/\[GoogleGenerativeAI Error\]:\s*(Error fetching from [^\s:]+:\s*([^\s:]+:\s*)?)?/i, '').trim() || rawMsg;
+          const reason = cleanReason.slice(0, 250);
           printWarning(`${fallbackProvider} unavailable: ${reason}`);
           continue;
         }
@@ -625,8 +627,10 @@ export class AgentLoop {
       return `${provider} server error — check provider status page.`;
     }
 
-    // Fallback: show a short version, not the full JSON
-    const shortMsg = err.message?.slice(0, 120) ?? 'Unknown error';
+    // Fallback: show a clean version, not raw URLs or truncated JSON
+    let cleanMsg = err.message ?? 'Unknown error';
+    cleanMsg = cleanMsg.replace(/\[GoogleGenerativeAI Error\]:\s*(Error fetching from [^\s:]+:\s*([^\s:]+:\s*)?)?/i, '').trim() || cleanMsg;
+    const shortMsg = cleanMsg.slice(0, 200);
     return `${provider} error: ${shortMsg}`;
   }
 
