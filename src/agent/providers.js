@@ -90,8 +90,21 @@ export class ProviderClient {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const client = new GoogleGenerativeAI(this.apiKey);
 
+    // If using a Gemini 3 / Thinking model that requires thoughtSignature for tool calls,
+    // but the history has tool calls from another provider without thoughtSignature,
+    // downgrade to gemini-2.5-flash for this call to prevent 400 Bad Request errors.
+    let targetModelId = this.model.id;
+    if (targetModelId.startsWith('gemini-3') || targetModelId.includes('thinking')) {
+      const hasMissingSig = messages.some(m =>
+        m.role === 'assistant' && Array.isArray(m.content) && m.content.some(c => c.type === 'tool_use' && !c.thoughtSignature && !c.thought_signature && !c.thought_signature_bytes)
+      );
+      if (hasMissingSig) {
+        targetModelId = 'gemini-2.5-flash';
+      }
+    }
+
     const geminiModel = client.getGenerativeModel({
-      model:             this.model.id,
+      model:             targetModelId,
       systemInstruction: ANNIHILATOR_SYSTEM_PROMPT,
       generationConfig:  { maxOutputTokens: MAX_TOKENS },
     });
@@ -148,7 +161,16 @@ export class ProviderClient {
           const parts = [];
           for (const c of msg.content) {
             if (c.type === 'text')     parts.push({ text: c.text });
-            if (c.type === 'tool_use') parts.push({ functionCall: { name: c.name, args: c.input } });
+            if (c.type === 'tool_use') {
+              const fcPart = { functionCall: { name: c.name, args: c.input } };
+              if (c.thoughtSignature || c.thought_signature) {
+                fcPart.thoughtSignature = c.thoughtSignature || c.thought_signature;
+              }
+              if (c.thought) {
+                fcPart.thought = c.thought;
+              }
+              parts.push(fcPart);
+            }
           }
           history.push({ role: 'model', parts });
         }
@@ -399,7 +421,12 @@ export async function* parseGeminiStream(streamResult) {
   let stopReason  = 'end_turn';
   let usage       = null;
 
-  for await (const chunk of streamResult) {
+  const stream = streamResult?.stream || streamResult;
+  if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
+    throw new Error('Google Gemini stream is not async iterable. Check API response.');
+  }
+
+  for await (const chunk of stream) {
     if (chunk.usageMetadata) {
       usage = {
         input_tokens:  chunk.usageMetadata.promptTokenCount,
@@ -415,11 +442,18 @@ export async function* parseGeminiStream(streamResult) {
         yield { type: 'text', text: part.text };
       }
       if (part.functionCall) {
-        toolCalls.push({
+        const tc = {
           id:    `gemini_tool_${Date.now()}_${toolCalls.length}`,
           name:  part.functionCall.name,
           input: part.functionCall.args || {},
-        });
+        };
+        if (part.thoughtSignature || part.thought_signature) {
+          tc.thoughtSignature = part.thoughtSignature || part.thought_signature;
+        }
+        if (part.thought) {
+          tc.thought = part.thought;
+        }
+        toolCalls.push(tc);
       }
     }
 

@@ -559,7 +559,7 @@ export class AgentLoop {
         switch (adapter) {
           case 'anthropic': return await this._consumeAnthropicStream(stream);
           case 'openai':    return await this._consumeOpenAIStream(stream);
-          case 'google':    return await this._consumeGeminiStream(fullResult || stream);
+          case 'google':    return await this._consumeGeminiStream(stream);
           default:          throw new Error(`Unknown adapter: ${adapter}`);
         }
       } catch (err) {
