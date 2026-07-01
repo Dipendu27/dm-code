@@ -191,50 +191,6 @@ export class ProviderClient {
     return { stream: result.stream, adapter: 'google', fullResult: result };
   }
 
-// Helper: Prune conversation history to fit within strict provider TPM/context limits (e.g. Groq 8000 TPM)
-function _pruneMessagesForLimit(messages, maxPromptTokens = 4500) {
-  let estTokens = Math.ceil(JSON.stringify(messages).length / 3.5) + 500;
-  if (estTokens <= maxPromptTokens || messages.length <= 2) return messages;
-
-  const firstMsg = messages[0];
-  const tailCount = Math.min(4, messages.length - 1);
-  const lastMsgs = messages.slice(-tailCount);
-  const middleMsgs = messages.slice(1, -tailCount);
-
-  // Step 1: Truncate large tool_result outputs or long texts in middle messages
-  const compactedMiddle = middleMsgs.map(m => {
-    if (Array.isArray(m.content)) {
-      return {
-        ...m,
-        content: m.content.map(c => {
-          if (c.type === 'tool_result' && typeof c.content === 'string' && c.content.length > 200) {
-            return { ...c, content: c.content.slice(0, 200) + '... [output truncated for rate/context limit]' };
-          }
-          if (c.type === 'text' && c.text.length > 300) {
-            return { ...c, text: c.text.slice(0, 300) + '... [text truncated for rate/context limit]' };
-          }
-          return c;
-        }),
-      };
-    } else if (typeof m.content === 'string' && m.content.length > 300) {
-      return { ...m, content: m.content.slice(0, 300) + '... [text truncated for rate/context limit]' };
-    }
-    return m;
-  });
-
-  let pruned = [firstMsg, ...compactedMiddle, ...lastMsgs];
-  estTokens = Math.ceil(JSON.stringify(pruned).length / 3.5) + 500;
-
-  // Step 2: If STILL over budget, omit middle messages entirely
-  if (estTokens > maxPromptTokens) {
-    pruned = [
-      firstMsg,
-      { role: 'assistant', content: 'Note: Earlier conversation history was omitted to fit within provider TPM/context limits.' },
-      ...lastMsgs,
-    ];
-  }
-  return pruned;
-}
 
   // ── Groq (OpenAI-compatible API, streaming) ───────────────────────────────
   async _streamGroq(messages, tools, signal) {
@@ -353,6 +309,51 @@ export async function isOllamaAvailable() {
   } catch {
     return false;
   }
+}
+
+// Helper: Prune conversation history to fit within strict provider TPM/context limits (e.g. Groq 8000 TPM)
+function _pruneMessagesForLimit(messages, maxPromptTokens = 4500) {
+  let estTokens = Math.ceil(JSON.stringify(messages).length / 3.5) + 500;
+  if (estTokens <= maxPromptTokens || messages.length <= 2) return messages;
+
+  const firstMsg = messages[0];
+  const tailCount = Math.min(4, messages.length - 1);
+  const lastMsgs = messages.slice(-tailCount);
+  const middleMsgs = messages.slice(1, -tailCount);
+
+  // Step 1: Truncate large tool_result outputs or long texts in middle messages
+  const compactedMiddle = middleMsgs.map(m => {
+    if (Array.isArray(m.content)) {
+      return {
+        ...m,
+        content: m.content.map(c => {
+          if (c.type === 'tool_result' && typeof c.content === 'string' && c.content.length > 200) {
+            return { ...c, content: c.content.slice(0, 200) + '... [output truncated for rate/context limit]' };
+          }
+          if (c.type === 'text' && c.text.length > 300) {
+            return { ...c, text: c.text.slice(0, 300) + '... [text truncated for rate/context limit]' };
+          }
+          return c;
+        }),
+      };
+    } else if (typeof m.content === 'string' && m.content.length > 300) {
+      return { ...m, content: m.content.slice(0, 300) + '... [text truncated for rate/context limit]' };
+    }
+    return m;
+  });
+
+  let pruned = [firstMsg, ...compactedMiddle, ...lastMsgs];
+  estTokens = Math.ceil(JSON.stringify(pruned).length / 3.5) + 500;
+
+  // Step 2: If STILL over budget, omit middle messages entirely
+  if (estTokens > maxPromptTokens) {
+    pruned = [
+      firstMsg,
+      { role: 'assistant', content: 'Note: Earlier conversation history was omitted to fit within provider TPM/context limits.' },
+      ...lastMsgs,
+    ];
+  }
+  return pruned;
 }
 
 // ─── Convert Anthropic-format messages → OpenAI-compatible format ────────────
