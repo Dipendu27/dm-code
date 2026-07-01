@@ -267,9 +267,13 @@ export class AgentLoop {
     } catch (err) {
       if (!this._isRateLimitError(err)) throw err;
 
-      // Rate limit hit — stop spinner and try cloud fallback providers
+      // Rate limit or quota hit — stop spinner and try cloud fallback providers
       stopThinking();
-      printWarning(`Rate limit on ${this.model.provider}. Trying fallback providers...`);
+      const status = err.status ?? err.statusCode ?? err.response?.status;
+      const msg = err.message || '';
+      const isBilling = status === 402 || (status === 400 && /credit|billing|quota|purchase/i.test(msg)) || /credit balance|insufficient_quota|plan limits/i.test(msg);
+      const reasonStr = isBilling ? `insufficient credits or quota limit reached` : `rate limit reached (${msg.slice(0, 60) || 'too many requests'})`;
+      printWarning(`Provider ${this.model.providerLabel || this.model.provider} unavailable: ${reasonStr}. Switching to fallback providers...`);
 
       const fallbacks = FALLBACK_ORDER.filter(p => {
         if (p === this.model.provider) return false;

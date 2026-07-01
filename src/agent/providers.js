@@ -138,7 +138,8 @@ export class ProviderClient {
             }
             return { text: typeof c === 'string' ? c : JSON.stringify(c) };
           });
-          history.push({ role: 'user', parts });
+          const hasFuncResp = parts.some(p => p.functionResponse);
+          history.push({ role: hasFuncResp ? 'function' : 'user', parts });
         }
       } else if (msg.role === 'assistant') {
         if (typeof msg.content === 'string') {
@@ -170,6 +171,11 @@ export class ProviderClient {
 
   // ── Groq (OpenAI-compatible API, streaming) ───────────────────────────────
   async _streamGroq(messages, tools, signal) {
+    // Groq free tier has strict TPM (Tokens Per Minute) limits (often 6000 TPM).
+    // Cap max_tokens so prompt_tokens + max_tokens stays under budget to prevent 413 errors.
+    const estPromptTokens = Math.ceil(JSON.stringify(messages).length / 3.5) + 500;
+    const groqMaxTokens   = Math.min(MAX_TOKENS, Math.max(1024, 5500 - estPromptTokens));
+
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:  'POST',
       headers: {
@@ -179,7 +185,7 @@ export class ProviderClient {
       signal: signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         model:      this.model.id,
-        max_tokens: MAX_TOKENS,
+        max_tokens: groqMaxTokens,
         stream:     true,
         stream_options: { include_usage: true },
         messages: [
