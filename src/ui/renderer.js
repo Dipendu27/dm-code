@@ -7,6 +7,7 @@ import gradient from 'gradient-string';
 import wrapAnsi from 'wrap-ansi';
 import stripAnsi from 'strip-ansi';
 import os from 'os';
+import { highlight } from 'cli-highlight';
 import { TOOL_NAME, MODEL_DISPLAY, TOOL_VERSION, THEME } from '../config/constants.js';
 
 // ─── Color helpers ───────────────────────────────────────────────────────────
@@ -96,73 +97,166 @@ class StreamingMarkdown {
   constructor() {
     this.buffer = '';
     this.inCodeBlock = false;
+    this.codeBuffer = '';
+    this.codeLang = '';
+    this.awaitingLangLine = false;
     this.inInlineCode = false;
     this.inBold = false;
     this.inThink = false;
+    this.atLineStart = true; // tracks whether we're at the start of a line, for # and - detection
   }
 
   push(text) {
     this.buffer += text;
     let output = '';
 
-    // Process complete tokens while they exist in the buffer
     while (this.buffer.length > 0) {
+      // ── Inside a fenced code block: buffer raw content until the closing ``` ──
+      if (this.inCodeBlock) {
+        if (this.awaitingLangLine) {
+          const nl = this.buffer.indexOf('\n');
+          if (nl === -1) {
+            if (this.buffer.includes('```')) {
+              // closing fence arrived with no language line in between (empty block)
+              this.codeLang = '';
+              this.awaitingLangLine = false;
+              continue;
+            }
+            break; // wait for more chunks to complete the language line
+          }
+          this.codeLang = this.buffer.slice(0, nl).trim();
+          this.buffer = this.buffer.slice(nl + 1);
+          this.awaitingLangLine = false;
+          continue;
+        }
+
+        const fenceIdx = this.buffer.indexOf('```');
+        if (fenceIdx === -1) {
+          this.codeBuffer += this.buffer;
+          this.buffer = '';
+          break;
+        }
+        this.codeBuffer += this.buffer.slice(0, fenceIdx);
+        this.buffer = this.buffer.slice(fenceIdx + 3);
+        this.inCodeBlock = false;
+        output += renderCodeBlock(this.codeBuffer, this.codeLang);
+        this.codeBuffer = '';
+        this.codeLang = '';
+        this.atLineStart = true;
+        continue;
+      }
+
+      // ── Opening fence ──
       if (this.buffer.startsWith('```')) {
-        this.inCodeBlock = !this.inCodeBlock;
+        this.inCodeBlock = true;
+        this.awaitingLangLine = true;
         this.buffer = this.buffer.slice(3);
-        // Code block formatting
-        output += this.inCodeBlock ? chalk.bgHex('#1A1A1A').hex('#A8C7FA')('\n') : chalk.reset('\n');
-      } else if (this.buffer.startsWith('**')) {
+        continue;
+      }
+
+      // ── Headers: only recognized at the start of a line ──
+      if (this.atLineStart) {
+        const headerMatch = this.buffer.match(/^(#{1,3})\s+/);
+        if (headerMatch) {
+          const nl = this.buffer.indexOf('\n');
+          if (nl === -1 && !this.buffer.slice(headerMatch[0].length).length) break; // wait for more
+          const lineEnd = nl === -1 ? this.buffer.length : nl;
+          const headerText = this.buffer.slice(headerMatch[0].length, lineEnd);
+          output += '\n' + chalk.bold(c.primary(headerText)) + '\n';
+          this.buffer = this.buffer.slice(lineEnd + (nl === -1 ? 0 : 1));
+          this.atLineStart = true;
+          continue;
+        }
+        const bulletMatch = this.buffer.match(/^([-*])\s+/);
+        if (bulletMatch && bulletMatch[1] !== '*' || (bulletMatch && this.buffer[1] === ' ')) {
+          output += c.primary('  •') + ' ';
+          this.buffer = this.buffer.slice(bulletMatch[0].length);
+          this.atLineStart = false;
+          continue;
+        }
+      }
+
+      if (this.buffer.startsWith('**')) {
         this.inBold = !this.inBold;
         this.buffer = this.buffer.slice(2);
         output += this.inBold ? '\x1b[1m' : '\x1b[22m';
-      } else if (this.buffer.startsWith('`') && !this.inCodeBlock) {
+        this.atLineStart = false;
+      } else if (this.buffer.startsWith('`')) {
         this.inInlineCode = !this.inInlineCode;
         this.buffer = this.buffer.slice(1);
-        output += this.inInlineCode ? chalk.bgHex('#222').cyan('') : chalk.reset(c.assistant(''));
+        this.atLineStart = false;
       } else if (this.buffer.startsWith('<think>')) {
         this.inThink = true;
         this.buffer = this.buffer.slice(7);
         output += '\n' + c.muted('  ┌─ ') + c.info('Backend thought') + '\n' + c.muted('  │ ');
+        this.atLineStart = false;
       } else if (this.buffer.startsWith('</think>')) {
         this.inThink = false;
         this.buffer = this.buffer.slice(8);
         output += '\n' + c.muted('  └─\n');
+        this.atLineStart = true;
       } else {
-        // Find next potential token
         const nextToken = this.buffer.match(/```|\*\*|`|<think>|<\/think>|\n/);
         const idx = nextToken ? nextToken.index : this.buffer.length;
 
-        // If a token is partially formed at the end, wait for more chunks
-        if (!nextToken && (this.buffer.endsWith('`') || this.buffer.endsWith('*') || this.buffer.endsWith('<') || this.buffer.endsWith('</') || this.buffer.endsWith('<t'))) {
-          break; // wait for next chunk
+        if (!nextToken && (this.buffer.endsWith('`') || this.buffer.endsWith('*') ||
+            this.buffer.endsWith('<') || this.buffer.endsWith('</') || this.buffer.endsWith('<t'))) {
+          break;
         }
 
         let chunk = this.buffer.slice(0, idx || 1);
         this.buffer = this.buffer.slice(chunk.length);
 
-        // Handle newlines inside think blocks
-        if (chunk === '\n' && this.inThink) {
-           output += '\n' + c.muted('  │ ');
-           continue;
+        if (chunk === '\n') {
+          this.atLineStart = true;
+          if (this.inThink) { output += '\n' + c.muted('  │ '); continue; }
+          output += '\n';
+          continue;
         }
+        this.atLineStart = false;
 
-        // Apply formatting
-        if (this.inCodeBlock) {
-          output += chalk.bgHex('#1A1A1A').hex('#A8C7FA')(chunk);
-        } else if (this.inInlineCode) {
-          output += chalk.bgHex('#222').cyan(chunk);
-        } else if (this.inBold) {
-          output += chunk; // ANSI bold is active
-        } else if (this.inThink) {
-          output += c.dim(chunk);
-        } else {
-          output += c.assistant(chunk);
-        }
+        if (this.inInlineCode)    output += chalk.bgHex('#222').cyan(chunk);
+        else if (this.inBold)     output += chunk;
+        else if (this.inThink)    output += c.dim(chunk);
+        else                      output += c.assistant(chunk);
       }
     }
     return output;
   }
+
+  // Called at stream end in case a code block or bold span never closed
+  flush() {
+    let output = '';
+    if (this.inCodeBlock && this.codeBuffer) {
+      output += renderCodeBlock(this.codeBuffer, this.codeLang);
+    } else if (this.buffer) {
+      output += c.assistant(this.buffer);
+    }
+    return output;
+  }
+}
+
+// Renders one complete fenced code block with real syntax highlighting.
+// Falls back to plain text if the declared language isn't recognized —
+// cli-highlight's ignoreIllegals option only covers bad syntax WITHIN a
+// known language; an unrecognized language STRING still throws, so this
+// try/catch is required, not optional defensive code.
+function renderCodeBlock(code, lang) {
+  const trimmed = code.replace(/^\n/, '').replace(/\n+$/, '');
+  let highlighted;
+  try {
+    highlighted = lang
+      ? highlight(trimmed, { language: lang, ignoreIllegals: true })
+      : highlight(trimmed, { ignoreIllegals: true });
+  } catch {
+    highlighted = trimmed;
+  }
+  const label = c.dim(lang || 'code');
+  const lines = highlighted.split('\n');
+  const out = ['\n' + c.muted('  ┌─ ') + label];
+  for (const line of lines) out.push(c.muted('  │ ') + line);
+  out.push(c.muted('  └─') + '\n');
+  return out.join('\n');
 }
 
 let activeStream = null;
@@ -177,8 +271,9 @@ export function printStreamChunk(text) {
 
 // ─── End streaming ───────────────────────────────────────────────────────────
 export function printStreamEnd() {
-  if (activeStream && activeStream.buffer) {
-    process.stdout.write(c.assistant(activeStream.buffer));
+  if (activeStream) {
+    const remaining = activeStream.flush();
+    if (remaining) process.stdout.write(remaining);
   }
   activeStream = null;
   console.log();
@@ -235,23 +330,30 @@ export function printCostSummary(inputTokens, outputTokens, modelName, sessionTu
 }
 
 // ─── Tool use block (Claude Code's teal/orange tool badges) ─────────────────
-export function printToolCall(toolName, params) {
-  const icon = toolIcon(toolName);
-  const label = chalk.bgHex('#1C2333').hex(THEME.tool)(` ${icon} ${toolName} `);
-  const args  = formatToolArgs(toolName, params);
-  console.log(c.muted('  ') + label + ' ' + c.dim(args));
+export function printToolCall(name, params) {
+  const TOOL_VERBS = {
+    read_file: 'Read', write_file: 'Write', edit_file: 'Edit',
+    run_command: 'Bash', list_files: 'List', search_files: 'Search',
+    create_directory: 'Mkdir', delete_file: 'Delete', move_file: 'Move',
+    web_fetch: 'Fetch', memory_read: 'MemoryRead', memory_write: 'MemoryWrite',
+    update_todos: 'Plan',
+  };
+  const verb = TOOL_VERBS[name] || name;
+  const argStr = formatToolArgs(name, params);
+  const dot = chalk.hex(THEME.primary)('⏺');
+  console.log('  ' + dot + ' ' + chalk.bold(c.primary(verb)) + (argStr ? ' ' + c.dim(argStr) : ''));
 }
 
-export function printToolResult(toolName, result, durationMs) {
-  const dur = durationMs ? c.muted(` (${durationMs}ms)`) : '';
-  const icon = '✓';
-  const snippet = truncateResult(result);
-  console.log(
-    c.muted('  ') +
-    c.success(`${icon} ${toolName}`) +
-    dur +
-    (snippet ? '\n  ' + c.dim(snippet) : '')
-  );
+export function printToolResult(name, resultStr, durationMs) {
+  if (name === 'update_todos') return; // rendered separately by printTodoList
+  const dot = c.muted('  └');
+  const dur = durationMs !== undefined ? c.dim(` (${durationMs}ms)`) : '';
+  const lines = (resultStr || '').trim().split('\n');
+  if (lines.length === 1 && lines[0].length <= 80) {
+    console.log(dot + ' ' + c.dim(lines[0]) + dur);
+  } else {
+    console.log(dot + ' ' + c.dim(`${lines.length} lines`) + dur);
+  }
 }
 
 export function printToolError(toolName, error) {
@@ -369,22 +471,22 @@ export function printCommandOutput(cmd, stdout, stderr, exitCode) {
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 const THINKING_MESSAGES = [
-  'Annihilator is thinking…',
-  'Analyzing your request…',
-  'Cooking up a response…',
-  'Diving deep into the code…',
-  'Connecting the dots…',
-  'Working through it…',
-  'Crafting the perfect answer…',
-  'Almost there, hold tight…',
-  'Processing at light speed…',
-  'Gathering intelligence…',
-  'Brain cells firing…',
-  'Crunching the numbers…',
-  'Assembling the pieces…',
-  'Consulting the codebase…',
-  'Weaving some magic…',
-  'Neurons activated…',
+  'Thinking…',
+  'Analyzing…',
+  'Cooking…',
+  'Diving deep…',
+  'Connecting dots…',
+  'Working…',
+  'Crafting answer…',
+  'Almost there…',
+  'Processing…',
+  'Gathering info…',
+  'Brainstorming…',
+  'Number crunching…',
+  'Assembling…',
+  'Checking code…',
+  'Weaving magic…',
+  'Neurons firing…',
 ];
 
 class ThinkingSpinner {
@@ -422,7 +524,8 @@ class ThinkingSpinner {
     const msg = this._overrideMsg || THINKING_MESSAGES[this._msgIndex];
     const elapsed = ((Date.now() - this._startTime) / 1000).toFixed(0);
     const timer = c.dim(` ${elapsed}s`);
-    const line = `  ${spinner} ${c.muted(msg)}${timer}`;
+    const hint = c.dim('  (Ctrl+C to interrupt)');
+    const line = `  ${spinner} ${c.muted(msg)}${timer}${hint}`;
     process.stdout.write(`\r\x1b[2K${line}`);
   }
 
@@ -684,6 +787,7 @@ function formatToolArgs(toolName, params) {
     case 'web_fetch':         return (params.url || '').slice(0, 80);
     case 'memory_read':       return params.key || '';
     case 'memory_write':      return params.key || '';
+    case 'update_todos':      return `${Array.isArray(params.todos) ? params.todos.length : 0} item(s)`;
     default:                  return JSON.stringify(params).slice(0, 80);
   }
 }
@@ -693,4 +797,19 @@ function truncateResult(result) {
   const s = typeof result === 'string' ? result : JSON.stringify(result);
   const clean = s.replace(/\n+/g, ' ').trim();
   return clean.length > 120 ? clean.slice(0, 120) + '…' : clean;
+}
+
+export function printTodoList(todos) {
+  if (!todos || todos.length === 0) return;
+  console.log();
+  for (const t of todos) {
+    if (t.status === 'completed') {
+      console.log('  ' + c.success('✓') + ' ' + c.dim(chalk.strikethrough(t.content)));
+    } else if (t.status === 'in_progress') {
+      console.log('  ' + c.primary('◐') + ' ' + chalk.bold(c.primary(t.content)));
+    } else {
+      console.log('  ' + c.muted('○') + ' ' + c.muted(t.content));
+    }
+  }
+  console.log();
 }

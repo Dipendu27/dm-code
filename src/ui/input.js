@@ -146,16 +146,3 @@ export class InputHandler {
     }
   }
 }
-
-// ── Single-shot confirm helper ─────────────────────────────────────────────────
-export async function confirm(rl, message) {
-  return new Promise((resolve) => {
-    rl.question(
-      chalk.yellow(`  ${message} `) + chalk.dim('[y/n/a] '),
-      (answer) => {
-        const a = answer.trim().toLowerCase();
-        resolve({ approved: a === 'y' || a === 'yes', all: a === 'a' });
-      }
-    );
-  });
-}

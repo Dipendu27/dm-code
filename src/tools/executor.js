@@ -178,6 +178,27 @@ export const TOOL_DEFINITIONS = [
       required: ['key', 'value'],
     },
   },
+  {
+    name: 'update_todos',
+    description: 'Create or update the task checklist shown to the user. Call this proactively at the start of any task with 3 or more distinct steps to lay out your plan, then call it again whenever a task moves to in_progress or completed. Always pass the COMPLETE list on every call (this replaces the whole checklist, it does not merge). Skip this tool entirely for single-step or purely conversational requests.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        todos: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              content: { type: 'string', description: 'Short imperative task description, e.g. "Add rate-limit fallback to loop.js"' },
+              status:  { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
+            },
+            required: ['content', 'status'],
+          },
+        },
+      },
+      required: ['todos'],
+    },
+  },
 ];
 
 // ─── Dangerous commands that always require confirmation ──────────────────────
@@ -232,6 +253,7 @@ export class ToolExecutor {
     this.cwd       = cwd || process.cwd();
     this.memory    = memory || {};
     this.onConfirm = onConfirm;
+    this.todos     = [];
   }
 
   async execute(toolName, params) {
@@ -258,6 +280,7 @@ export class ToolExecutor {
       case 'web_fetch':         return this.webFetch(p);
       case 'memory_read':       return this.memoryRead(p);
       case 'memory_write':      return this.memoryWrite(p);
+      case 'update_todos':      return this.updateTodos(p);
       default: throw new Error(`Unknown tool: ${name}`);
     }
   }
@@ -543,6 +566,12 @@ export class ToolExecutor {
   async memoryWrite({ key, value }) {
     this.memory[key] = value;
     return `Stored memory[${key}]`;
+  }
+
+  // ── update_todos ───────────────────────────────────────────────────────────
+  async updateTodos({ todos }) {
+    this.todos = Array.isArray(todos) ? todos : [];
+    return `Updated ${this.todos.length} todo(s).`;
   }
 }
 

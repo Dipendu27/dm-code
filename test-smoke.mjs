@@ -1,5 +1,5 @@
 // DM Code — Smoke Test Suite (37 assertions)
-import { ToolExecutor, isSafeCommand, isDangerous } from './src/tools/executor.js';
+import { ToolExecutor, TOOL_DEFINITIONS, isSafeCommand, isDangerous } from './src/tools/executor.js';
 import { getModelById, MODELS, buildSystemPrompt } from './src/config/constants.js';
 import { SessionPersistence } from './src/agent/session.js';
 import { MCPSchemaManager } from './src/agent/mcp-manager.js';
@@ -52,6 +52,9 @@ const mem = await ex.memoryRead({ key: 'testkey' });
 ok('memory read/write', mem === 'testval');
 const noMem = await ex.memoryRead({ key: 'nonexistent' });
 ok('memory_read: missing key message', noMem.includes('no memory stored'));
+ok('TOOL_DEFINITIONS: 13 entries', TOOL_DEFINITIONS.length === 13);
+const todoRes = await ex.updateTodos({ todos: [{ content: 'Test task', status: 'pending' }] });
+ok('updateTodos: updates array', ex.todos.length === 1 && todoRes.includes('Updated 1'));
 
 try { await ex.readFile({ path: '../../../etc/passwd' }); ok('path traversal blocked', false); }
 catch (e) { ok('path traversal blocked', e.message.includes('traversal') || e.message.includes('outside')); }

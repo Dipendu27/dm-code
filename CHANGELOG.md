@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.4] — 2026-07-02
+
+### ✨ Major Features
+- **Claude Code Parity & Model Updates** — Swapped default Llama model to Qwen 2.5 Coder 32B (`qwen/qwen3.6-27b`). Updated deprecated Groq models and retired Haiku 3.5 → Haiku 4.5.
+- **Streaming Markdown Renderer** — Rewrite of streaming markdown parsing using `cli-highlight` for syntax highlighting without leaking code-block language tags.
+- **Task Planning (`update_todos`)** — Built-in `update_todos` tool with live terminal task checklist rendering (`○`, `◐`, `✓`).
+- **Interactive Model Picker** — Arrow-key and number navigation without clearing the screen or layering multiple readline interfaces.
+
+### 🎨 UI & UX Refinements
+- **Minimal Tool UI** — Replaced emoji badges with sleek `⏺` markers and verb-cased tool labels (`Read`, `Write`, `Edit`, `Bash`, `Plan`).
+- **Punchier Spinner** — Trimmed thinking spinner messages to 1–3 words and added explicit `(Ctrl+C to interrupt)` hint.
+
+### 🐛 Bug Fixes & Cleanup
+- Fixed `MAX_TOKENS` typo and removed unused standalone imports/helpers.
+- Updated installation scripts (`install.sh` and `install.ps1`).
+
+---
+
+## [1.3.3] — 2026-06-26
+
+### ✨ Major Features
+- **IDE Diff Viewer & Thought Blocks** — Added interactive diff viewer and backend thought block rendering in terminal.
+
+### 🐛 Bug Fixes
+- **Google Gemini Endpoints** — Updated model endpoints to resolve 404 Not Found API errors.
+
+---
+
+## [1.3.2] — 2026-06-25
+
+### 🔒 Security & Automation
+- **Path Traversal Patch** — Secured path traversal edge cases in validation and session modules.
+- **CI Workflow & Auto-Approve** — Added automated CI workflow and secure `--auto-approve` flag for non-interactive execution of dangerous commands.
+
+---
+
+## [1.3.1] — 2026-06-25
+
+### ✨ Major Features & Audit Fixes
+- **Comprehensive Audit Fixes (Phases 1–4)** — Improved URL sanitization, humanized error messages, interactive keys, `.env` file loading, and localized formatting.
+- **Package Release Preparation** — Cleaned up package metadata, `.npmignore`, and installation documentation for npm distribution.
+
+---
+
 ## [1.3.0] — 2024-06-25
 
 ### ✨ Major Features

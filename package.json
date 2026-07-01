@@ -59,6 +59,7 @@
     "@google/generative-ai": "^0.24.1",
     "boxen": "^8.0.1",
     "chalk": "^5.4.1",
+    "cli-highlight": "^2.1.11",
     "commander": "^13.1.0",
     "conf": "^13.1.0",
     "execa": "^9.5.2",

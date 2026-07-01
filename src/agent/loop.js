@@ -29,6 +29,7 @@ import {
   startThinking,
   stopThinking,
   setThinkingMessage,
+  printTodoList,
 } from '../ui/renderer.js';
 import {
   ProviderClient,
@@ -189,7 +190,11 @@ export class AgentLoop {
             const resultStr = typeof result === 'object'
               ? JSON.stringify(result)
               : String(result ?? '');
-            printToolResult(toolName, resultStr, durationMs);
+            if (toolName === 'update_todos') {
+              printTodoList(this.executor.todos);
+            } else {
+              printToolResult(toolName, resultStr, durationMs);
+            }
             toolResults.push({
               type:        'tool_result',
               tool_use_id: toolUseId,

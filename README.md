@@ -16,7 +16,7 @@
   ╚═════╝ ╚═╝     ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
 ```
 
-DM Code is a **free, open-source Claude Code alternative** that runs from your terminal on **macOS, Linux, and Windows**. Choose your engine from **11 free models** across 4 providers — Anthropic, Google, Groq, and Mistral — and switch between them at any time.
+DM Code is a **free, open-source Claude Code alternative** that runs from your terminal on **macOS, Linux, and Windows**. Choose your engine from **10 free models** across 4 providers — Anthropic, Google, Groq, and Mistral — and switch between them at any time.
 
 ---
 
@@ -139,8 +139,8 @@ dmcode --version
 
 ### v1.0.0
 
-- Initial release with 11 free models across 4 providers
-- 12 built-in tools (read, write, edit, run, search, etc.)
+- Initial release with 10 free models across 4 providers
+- 13 built-in tools (read, write, edit, run, search, plan, etc.)
 - Interactive model picker and API key management
 
 ---
@@ -149,17 +149,16 @@ dmcode --version
 
 | # | Model | Provider | Tier | Speed | Best For |
 |---|-------|----------|------|-------|----------|
-| 1 | **Claude Haiku 4.5** ✦ | Anthropic | FREE* | Fastest | Quick tasks, fast iteration |
-| 2 | Claude Sonnet 4.6 | Anthropic | FREE* | Fast | Complex refactoring, architecture (1M ctx) |
-| 3 | **Gemini 2.0 Flash** ✦ | Google | FREE | Fastest | Large codebases, 1M token context |
-| 4 | Gemini 2.0 Flash Thinking | Google | FREE | Medium | Hard algorithms, deep reasoning |
-| 5 | Gemini 1.5 Flash | Google | FREE | Very Fast | Lightweight tasks, large file reads |
-| 6 | **Llama 3.3 70B** ✦ | Groq | FREE | Ultra-fast | General coding, open-source quality |
-| 7 | Llama 3.1 8B Instant | Groq | FREE | Instant | Scripts, one-liners, rapid output |
-| 8 | Mixtral 8x7B | Groq | FREE | Very Fast | Code generation, multilingual |
-| 9 | DeepSeek R1 70B | Groq | FREE | Fast | Math, algorithms, problem-solving |
-| 10 | Mistral Small | Mistral | FREE* | Fast | Privacy-focused, EU projects |
-| 11 | Codestral | Mistral | FREE* | Fast | Code-only, fill-in-the-middle |
+| 1 | **Claude Haiku 4.5** ✦ | Anthropic | FREE* | Fastest | Quick tasks, code completion, fast iteration |
+| 2 | Claude Sonnet 4.6 | Anthropic | FREE* | Fast | Complex refactoring, architecture, debugging |
+| 3 | **Gemini 3.5 Flash** ✦ | Google | FREE | Fastest | Large codebase analysis, massive context tasks |
+| 4 | Gemini 2.5 Pro | Google | FREE | Medium | Hard algorithmic problems, deep reasoning |
+| 5 | Gemini 2.5 Flash | Google | FREE | Very Fast | Lightweight coding tasks, large file reads |
+| 6 | **GPT-OSS 120B (Groq)** ✦ | Groq | FREE | Ultra-fast | General coding, fastest open-source quality |
+| 7 | GPT-OSS 20B (Groq) | Groq | FREE | Instant | Super-fast small tasks, scripts, one-liners |
+| 8 | Qwen3.6 27B | Groq | FREE | Fast | Multilingual reasoning, dense-model quality |
+| 9 | Mistral Small | Mistral | FREE* | Fast | European data privacy, multilingual code |
+| 10 | Codestral | Mistral | FREE* | Fast | Code-only tasks — fill-in-the-middle, completions |
 
 > **FREE** = permanently unlimited free  
 > **FREE\*** = free with monthly quota (generous for personal use)  
@@ -277,7 +276,7 @@ dmcode model
 dmcode --model gemini-3.5-flash "refactor my auth module"
 
 # Or by model ID:
-dmcode --model llama-3.3-70b-versatile "write unit tests for utils.py"
+dmcode --model qwen/qwen3.6-27b "write unit tests for utils.py"
 ```
 
 ### List all models
@@ -337,6 +336,7 @@ dmcode keys clear groq                 # remove a key
 | `web_fetch` | Fetch and read a URL |
 | `memory_read` | Read from session memory |
 | `memory_write` | Write to session memory |
+| `update_todos` | Manage and display interactive task checklist plans |
 
 ---
 
@@ -354,7 +354,7 @@ dm-code/
 │   │   ├── session.js          ← Session persistence ✨ new in v1.3
 │   │   └── mcp-manager.js      ← MCP schema management ✨ new in v1.3
 │   ├── tools/
-│   │   └── executor.js         ← All 12 tool implementations
+│   │   └── executor.js         ← All 13 tool implementations
 │   ├── ui/
 │   │   ├── renderer.js         ← Terminal UI (Claude Code visual style)
 │   │   ├── input.js            ← Readline REPL handler
@@ -406,7 +406,7 @@ dmcode --cwd /path/to/project        # set working directory
 dmcode --auto-approve                # skip all confirmation prompts
 dmcode --verbose                     # show full tool output
 
-dmcode models                        # list all 11 free models
+dmcode models                        # list all 10 free models
 dmcode model                         # interactive model picker
 dmcode keys                          # show API key status
 dmcode keys set PROVIDER KEY         # save an API key

@@ -131,8 +131,8 @@ export const MODELS = [
     recommended:   false,
   },
   {
-    id:            'meta-llama/llama-4-scout-17b-16e-instruct',
-    displayName:   'Llama 4 Scout 17B',
+    id:            'qwen/qwen3.6-27b',
+    displayName:   'Qwen3.6 27B',
     provider:      'groq',
     providerLabel: 'Groq',
     tier:          'FREE',
@@ -140,7 +140,7 @@ export const MODELS = [
     quality:       '★★★★★',
     context:       '128K tokens',
     contextTokens: 128_000,
-    bestFor:       'Mathematical reasoning, algorithms, problem solving',
+    bestFor:       'Multilingual reasoning, dense-model quality at open-weight speed',
     apiKeyEnv:     'GROQ_API_KEY',
     apiKeyUrl:     'https://console.groq.com/keys',
     recommended:   false,
@@ -216,6 +216,7 @@ export const TOOL_IDS = {
   WEB_FETCH:    'web_fetch',
   MEMORY_READ:  'memory_read',
   MEMORY_WRITE: 'memory_write',
+  UPDATE_TODOS: 'update_todos',
 };
 
 // UI theme — exact Claude Code colour palette
@@ -273,7 +274,9 @@ Core principles:
 - If uncertain about intent, ask a clarifying question before acting
 - Respect existing architecture; suggest improvements but do not impose them
 
-You have access to tools: read files, write files, edit files, run shell commands, list directories, search code, create directories, delete files, move files, and fetch URLs.
+You have access to tools: read files, write files, edit files, run shell commands, list directories, search code, create directories, delete files, move files, fetch URLs, read/write session memory, and update a task checklist.
+
+For any task with 3 or more distinct steps, call update_todos at the start to lay out your plan, mark each item in_progress immediately before starting it and completed immediately after finishing it, and always pass the full list on every call. Skip this for single-step or purely conversational requests.
 
 When using tools:
 - Chain tool calls efficiently to complete multi-step tasks
