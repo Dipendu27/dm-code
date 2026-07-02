@@ -196,10 +196,10 @@ export class ProviderClient {
   async _streamGroq(messages, tools, signal) {
     // Groq free tier has strict TPM (Tokens Per Minute) limits (8000 TPM across a rolling 60s window).
     // Groq counts Requested Tokens as (Prompt + Tools + max_tokens).
-    // Prune prompt down to ~1200 tokens and cap max_tokens at 800 so each turn requests <= 2000 tokens, allowing 4 back-to-back turns within 60s.
-    const prunedMessages  = _pruneMessagesForLimit(messages, 1200);
+    // Prune prompt down to ~800 tokens and cap max_tokens at 512 so each turn requests <= 1500 tokens, allowing 5+ back-to-back turns within 60s.
+    const prunedMessages  = _pruneMessagesForLimit(messages, 800);
     const estPromptTokens = Math.ceil(JSON.stringify(prunedMessages).length / 3.5) + 500;
-    const groqMaxTokens   = Math.min(800, Math.max(300, 2000 - estPromptTokens));
+    const groqMaxTokens   = Math.min(512, Math.max(256, 1800 - estPromptTokens));
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:  'POST',

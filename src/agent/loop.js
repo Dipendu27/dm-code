@@ -280,51 +280,60 @@ export class AgentLoop {
         return !!getApiKey(p);
       });
 
-      for (const fallbackProvider of fallbacks) {
-        const fallbackParams = this._buildFallbackParams(fallbackProvider);
-        if (!fallbackParams) continue;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        for (const fallbackProvider of fallbacks) {
+          const fallbackParams = this._buildFallbackParams(fallbackProvider);
+          if (!fallbackParams) continue;
 
-        const origClient  = this.client;
-        const origModel   = this.model;
-        const origModelId = this.modelId;
+          const origClient  = this.client;
+          const origModel   = this.model;
+          const origModelId = this.modelId;
 
-        try {
-          printInfo(`→ Trying ${fallbackProvider}...`);
+          try {
+            printInfo(`→ Trying ${fallbackProvider}...`);
 
-          this.client  = new ProviderClient(fallbackParams.modelId);
-          this.model   = fallbackParams.model;
-          this.modelId = fallbackParams.modelId;
+            this.client  = new ProviderClient(fallbackParams.modelId);
+            this.model   = fallbackParams.model;
+            this.modelId = fallbackParams.modelId;
 
-          const result = await this._callModel();
-          printInfo(`[Used ${fallbackProvider} as fallback — your default model is unchanged]`);
-          // Restore original client after successful fallback
-          this.client  = origClient;
-          this.model   = origModel;
-          this.modelId = origModelId;
-          return result;
-        } catch (fallbackErr) {
-          // Always restore original client
-          this.client  = origClient;
-          this.model   = origModel;
-          this.modelId = origModelId;
-          // Always continue to next provider, regardless of error type
-          const rawMsg = fallbackErr.message ?? 'unknown error';
-          const cleanReason = rawMsg.replace(/\[GoogleGenerativeAI Error\]:\s*(Error fetching from [^\s:]+:\s*([^\s:]+:\s*)?)?/i, '').trim() || rawMsg;
-          const reason = cleanReason.slice(0, 250);
-          printWarning(`${fallbackProvider} unavailable: ${reason}`);
-          continue;
+            const result = await this._callModel();
+            printInfo(`[Used ${fallbackProvider} as fallback — your default model is unchanged]`);
+            // Restore original client after successful fallback
+            this.client  = origClient;
+            this.model   = origModel;
+            this.modelId = origModelId;
+            return result;
+          } catch (fallbackErr) {
+            // Always restore original client
+            this.client  = origClient;
+            this.model   = origModel;
+            this.modelId = origModelId;
+            // Always continue to next provider, regardless of error type
+            const rawMsg = fallbackErr.message ?? 'unknown error';
+            const cleanReason = rawMsg.replace(/\[GoogleGenerativeAI Error\]:\s*(Error fetching from [^\s:]+:\s*([^\s:]+:\s*)?)?/i, '').trim() || rawMsg;
+            const reason = cleanReason.slice(0, 250);
+            printWarning(`${fallbackProvider} unavailable: ${reason}`);
+            continue;
+          }
         }
-      }
 
-      // Last resort: try Ollama if available
-      const ollamaReady = await isOllamaAvailable();
-      if (ollamaReady && !this._ollamaFallback) {
-        this._ollamaFallback = true;
-        printOllamaFallback(err.message);
-        try {
-          return await this._callOllama();
-        } catch (ollamaErr) {
-          printWarning(`Ollama fallback also failed: ${ollamaErr.message}`);
+        // Last resort: try Ollama if available
+        const ollamaReady = await isOllamaAvailable();
+        if (ollamaReady && !this._ollamaFallback) {
+          this._ollamaFallback = true;
+          printOllamaFallback(err.message);
+          try {
+            return await this._callOllama();
+          } catch (ollamaErr) {
+            printWarning(`Ollama fallback also failed: ${ollamaErr.message}`);
+          }
+        }
+
+        if (attempt < 3) {
+          const waitSec = attempt * 12;
+          printInfo(`⏳ All backup providers currently rate-limited. Waiting ${waitSec}s for rolling TPM/RPM windows to reset (attempt ${attempt}/3)...`);
+          await new Promise(r => setTimeout(r, waitSec * 1000));
+          printInfo(`🔄 Retrying fallback providers...`);
         }
       }
 
