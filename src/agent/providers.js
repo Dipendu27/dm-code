@@ -378,6 +378,20 @@ function _pruneMessagesForLimit(messages, maxPromptTokens = 1800) {
 }
 
 // ─── Convert Anthropic-format messages → OpenAI-compatible format ────────────
+/**
+ * Converts Anthropic message structures into standard OpenAI / Groq / Mistral format.
+ * 
+ * CRITICAL HARMONY TEMPLATE COMPATIBILITY NOTE:
+ * Groq uses the fast Harmony Jinja templating engine for Llama 3 / Mistral / GPT-OSS models.
+ * Harmony requires two strict rules for tool usage messages:
+ * 1. Every `{ role: 'tool' }` result message MUST contain the `name` property specifying the function name.
+ *    If `name` is missing, Harmony throws: `HarmonyError: EncodingError: Message=render failed: Tools should have a name!`
+ * 2. Function names must strictly adhere to the regex `^[a-zA-Z0-9_-]+$`. Any special characters, dots, or spaces
+ *    will cause template evaluation errors.
+ * 
+ * To guarantee 100% reliability even when message pruning removes earlier assistant tool_use blocks,
+ * this function maps existing tool_use IDs and applies strict regex sanitization.
+ */
 export function convertToOpenAIMessages(messages) {
   const out = [];
   const toolNameMap = new Map();

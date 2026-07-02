@@ -284,6 +284,11 @@ export class AgentLoop {
         return !!getApiKey(p);
       });
 
+      // AUTOMATIC ROLLING WINDOW RETRY LOOP:
+      // When primary providers (Anthropic, Google) and secondary fallbacks (Groq, Mistral) hit transient
+      // TPM (Tokens Per Minute) or RPM rate limits, the rolling window resets in 60 seconds.
+      // Instead of failing and crashing the user's session, we cycle through all configured fallback
+      // providers up to 3 times, backing off automatically between passes to allow rate limit windows to clear.
       for (let attempt = 1; attempt <= 3; attempt++) {
         for (const fallbackProvider of fallbacks) {
           const fallbackParams = this._buildFallbackParams(fallbackProvider);
