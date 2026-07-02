@@ -194,9 +194,9 @@ export class ProviderClient {
 
   // ── Groq (OpenAI-compatible API, streaming) ───────────────────────────────
   async _streamGroq(messages, tools, signal) {
-    // Groq free tier has strict TPM (Tokens Per Minute) limits (often 6000-8000 TPM).
-    // Prune older tool outputs and middle conversation history so prompt stays under 4500 tokens to prevent 413 errors.
-    const prunedMessages  = _pruneMessagesForLimit(messages, 4500);
+    // Groq free tier has strict TPM (Tokens Per Minute) limits (8000 TPM across a rolling 60s window).
+    // Prune older tool outputs and middle conversation history down to ~1800 tokens so 4 consecutive turns never exceed 8000 TPM.
+    const prunedMessages  = _pruneMessagesForLimit(messages, 1800);
     const estPromptTokens = Math.ceil(JSON.stringify(prunedMessages).length / 3.5) + 500;
     const groqMaxTokens   = Math.min(MAX_TOKENS, Math.max(1024, 6500 - estPromptTokens));
 
@@ -312,46 +312,58 @@ export async function isOllamaAvailable() {
 }
 
 // Helper: Prune conversation history to fit within strict provider TPM/context limits (e.g. Groq 8000 TPM)
-function _pruneMessagesForLimit(messages, maxPromptTokens = 4500) {
+function _pruneMessagesForLimit(messages, maxPromptTokens = 1800) {
   let estTokens = Math.ceil(JSON.stringify(messages).length / 3.5) + 500;
   if (estTokens <= maxPromptTokens || messages.length <= 2) return messages;
 
   const firstMsg = messages[0];
-  const tailCount = Math.min(4, messages.length - 1);
+  const tailCount = Math.min(3, messages.length - 1);
   const lastMsgs = messages.slice(-tailCount);
   const middleMsgs = messages.slice(1, -tailCount);
 
-  // Step 1: Truncate large tool_result outputs or long texts in middle messages
-  const compactedMiddle = middleMsgs.map(m => {
+  // Helper to truncate long text or tool_result contents in message objects
+  const truncateMsg = (m, maxLen = 250) => {
     if (Array.isArray(m.content)) {
       return {
         ...m,
         content: m.content.map(c => {
-          if (c.type === 'tool_result' && typeof c.content === 'string' && c.content.length > 200) {
-            return { ...c, content: c.content.slice(0, 200) + '... [output truncated for rate/context limit]' };
+          if (c.type === 'tool_result' && typeof c.content === 'string' && c.content.length > maxLen) {
+            return { ...c, content: c.content.slice(0, maxLen) + '... [output truncated for token budget]' };
           }
-          if (c.type === 'text' && c.text.length > 300) {
-            return { ...c, text: c.text.slice(0, 300) + '... [text truncated for rate/context limit]' };
+          if (c.type === 'text' && c.text.length > maxLen * 2) {
+            return { ...c, text: c.text.slice(0, maxLen * 2) + '... [text truncated for token budget]' };
           }
           return c;
         }),
       };
-    } else if (typeof m.content === 'string' && m.content.length > 300) {
-      return { ...m, content: m.content.slice(0, 300) + '... [text truncated for rate/context limit]' };
+    } else if (typeof m.content === 'string' && m.content.length > maxLen * 2) {
+      return { ...m, content: m.content.slice(0, maxLen * 2) + '... [text truncated for token budget]' };
     }
     return m;
-  });
+  };
 
+  // Step 1: Truncate large tool_result outputs in middle messages
+  const compactedMiddle = middleMsgs.map(m => truncateMsg(m, 150));
   let pruned = [firstMsg, ...compactedMiddle, ...lastMsgs];
   estTokens = Math.ceil(JSON.stringify(pruned).length / 3.5) + 500;
 
-  // Step 2: If STILL over budget, omit middle messages entirely
+  // Step 2: If STILL over budget, omit middle messages entirely and compact lastMsgs
   if (estTokens > maxPromptTokens) {
+    const compactedLast = lastMsgs.map(m => truncateMsg(m, 250));
     pruned = [
-      firstMsg,
-      { role: 'assistant', content: 'Note: Earlier conversation history was omitted to fit within provider TPM/context limits.' },
-      ...lastMsgs,
+      truncateMsg(firstMsg, 350),
+      { role: 'assistant', content: 'Note: Earlier conversation history was omitted to fit within provider token budget.' },
+      ...compactedLast,
     ];
+    estTokens = Math.ceil(JSON.stringify(pruned).length / 3.5) + 500;
+
+    // Step 3: Extreme fallback if single recent turns are massive
+    if (estTokens > maxPromptTokens && compactedLast.length > 1) {
+      pruned = [
+        truncateMsg(firstMsg, 200),
+        compactedLast[compactedLast.length - 1],
+      ];
+    }
   }
   return pruned;
 }

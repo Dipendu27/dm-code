@@ -267,7 +267,8 @@ export class ToolExecutor {
   }
 
   async _dispatch(name, p) {
-    switch (name) {
+    const cleanName = (name || '').replace(/^(repo_browser|file_editor|bash|tools|mcp)\./, '');
+    switch (cleanName) {
       case 'read_file':         return this.readFile(p);
       case 'write_file':        return this.writeFile(p);
       case 'edit_file':         return this.editFile(p);
@@ -281,7 +282,7 @@ export class ToolExecutor {
       case 'memory_read':       return this.memoryRead(p);
       case 'memory_write':      return this.memoryWrite(p);
       case 'update_todos':      return this.updateTodos(p);
-      default: throw new Error(`Unknown tool: ${name}`);
+      default: throw new Error(`Unknown tool: ${name}. Valid tools are: read_file, write_file, edit_file, run_command, list_files, search_files, create_directory, delete_file, move_file, web_fetch, memory_read, memory_write, update_todos.`);
     }
   }
 

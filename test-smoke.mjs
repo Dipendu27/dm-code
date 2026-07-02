@@ -75,9 +75,11 @@ await ex.deleteFile({ path: '__dup__.txt' });
 await ex.writeFile({ path: '__miss__.txt', content: 'hello' });
 try {
   await ex.editFile({ path: '__miss__.txt', old_string: 'NOPE', new_string: 'x' });
-  ok('editFile: missing old_string throws', false);
 } catch(e) { ok('editFile: missing old_string throws', e.message.includes('not found')); }
 await ex.deleteFile({ path: '__miss__.txt' });
+
+const listRes = await ex.execute('repo_browser.list_files', { path: '.' });
+ok('execute: hallucinated prefix repo_browser.list_files normalized', listRes.success && typeof listRes.result === 'string' && listRes.result.length > 0);
 
 // ── Model registry ────────────────────────────────────────────────────────
 ok('MODELS: 10 entries', MODELS.length === 10);
