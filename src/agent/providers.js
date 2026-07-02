@@ -392,7 +392,8 @@ export function convertToOpenAIMessages(messages) {
       } else if (Array.isArray(msg.content)) {
         for (const c of msg.content) {
           if (c.type === 'tool_result') {
-            const toolName = c.name || toolNameMap.get(c.tool_use_id) || 'tool_function';
+            const rawName = c.name || toolNameMap.get(c.tool_use_id) || 'tool_function';
+            const toolName = rawName.replace(/[^a-zA-Z0-9_-]/g, '_');
             out.push({
               role:         'tool',
               tool_call_id: c.tool_use_id,
@@ -412,7 +413,7 @@ export function convertToOpenAIMessages(messages) {
           .map(c => ({
             id:       c.id,
             type:     'function',
-            function: { name: c.name, arguments: JSON.stringify(c.input) },
+            function: { name: (c.name || 'tool_function').replace(/[^a-zA-Z0-9_-]/g, '_'), arguments: JSON.stringify(c.input) },
           }));
 
         const entry = { role: 'assistant' };
