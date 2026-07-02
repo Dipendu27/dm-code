@@ -147,6 +147,15 @@ ok('MCPSchemaManager: getActiveSchemas', schemas.length === 1 && schemas[0].name
 mcp.pruneInactive(0); // TTL=0ms → prune everything
 ok('MCPSchemaManager: pruneInactive', mcp.getActiveSchemas().length === 0);
 
+// ── convertToOpenAIMessages ─────────────────────────────────────────────
+const { convertToOpenAIMessages } = await import('./src/agent/providers.js');
+const converted = convertToOpenAIMessages([
+  { role: 'assistant', content: [{ type: 'tool_use', id: 'call_123', name: 'read_file', input: { path: 'a.txt' } }] },
+  { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call_123', content: 'hello' }] }
+]);
+const toolMsg = converted.find(m => m.role === 'tool');
+ok('convertToOpenAIMessages: includes name on role: tool messages', toolMsg?.name === 'read_file');
+
 // ── Summary ───────────────────────────────────────────────────────────────
 console.log(`\n  ${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

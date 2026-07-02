@@ -372,6 +372,18 @@ function _pruneMessagesForLimit(messages, maxPromptTokens = 1800) {
 // ─── Convert Anthropic-format messages → OpenAI-compatible format ────────────
 export function convertToOpenAIMessages(messages) {
   const out = [];
+  const toolNameMap = new Map();
+
+  // Step 1: Map all tool_use IDs to their tool names so tool_result messages can include name
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const c of msg.content) {
+        if (c.type === 'tool_use' && c.id) {
+          toolNameMap.set(c.id, c.name);
+        }
+      }
+    }
+  }
 
   for (const msg of messages) {
     if (msg.role === 'user') {
@@ -380,9 +392,11 @@ export function convertToOpenAIMessages(messages) {
       } else if (Array.isArray(msg.content)) {
         for (const c of msg.content) {
           if (c.type === 'tool_result') {
+            const toolName = c.name || toolNameMap.get(c.tool_use_id) || 'tool_function';
             out.push({
               role:         'tool',
               tool_call_id: c.tool_use_id,
+              name:         toolName,
               content:      typeof c.content === 'string' ? c.content : JSON.stringify(c.content),
             });
           }
