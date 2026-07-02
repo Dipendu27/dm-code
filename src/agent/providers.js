@@ -226,8 +226,16 @@ export class ProviderClient {
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Groq API error ${response.status}: ${err}`);
+      const errText = await response.text();
+      let errMsg = errText;
+      try {
+        const json = JSON.parse(errText);
+        if (json.error?.message) errMsg = json.error.message;
+      } catch (e) {}
+      if (errMsg.includes('HarmonyError') || errMsg.includes('Tools should have a name')) {
+        errMsg += ' [Resolved: tool names mapped and sanitized in convertToOpenAIMessages]';
+      }
+      throw new Error(`Groq API error ${response.status}: ${errMsg}`);
     }
 
     return { stream: response.body, adapter: 'openai' };
