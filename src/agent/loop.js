@@ -146,6 +146,7 @@ export class AgentLoop {
                 toolResults.push({
                   type:        'tool_result',
                   tool_use_id: toolUseId,
+                  name:        toolName,
                   content:     'User rejected this file change after reviewing diff.',
                   is_error:    true,
                 });
@@ -167,6 +168,7 @@ export class AgentLoop {
                 toolResults.push({
                   type:        'tool_result',
                   tool_use_id: toolUseId,
+                  name:        toolName,
                   content:     'User rejected this operation.',
                   is_error:    true,
                 });
@@ -198,6 +200,7 @@ export class AgentLoop {
             toolResults.push({
               type:        'tool_result',
               tool_use_id: toolUseId,
+              name:        toolName,
               content:     resultStr.length > 20_000
                 ? resultStr.slice(0, 20_000) + '\n\n[... truncated — output too large]'
                 : resultStr,
@@ -207,6 +210,7 @@ export class AgentLoop {
             toolResults.push({
               type:        'tool_result',
               tool_use_id: toolUseId,
+              name:        toolName,
               content:     `Error: ${error}`,
               is_error:    true,
             });
